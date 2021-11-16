@@ -22,12 +22,11 @@ struct frame_e* free_frame()
 {
 	lock_acquire(&frame_lock);
 	//dirty bit에 따라 swap slot에 swap in하는거 추가해야함
-	struct list_elem *e;// = list_pop_back(&frame_list); //list_pop_back에서 lru로 바꿔야함.
+	struct list_elem *e;//= list_pop_back(&frame_list); //list_pop_back에서 lru로 바꿔야함.
 	struct frame_e *fe = list_entry(e,struct frame_e,elem);
 
 	e = list_begin(&frame_list);
 	int j= list_size(&frame_list);
-	//printf("list_size : %d\n",j);
 	for(int i=0; i<2*list_size(&frame_list); i++)
 	{
 		fe = list_entry(e,struct frame_e,elem);
@@ -53,11 +52,8 @@ struct frame_e* free_frame()
 	}
 	int swap_slot = swap_to_disk(fe->kaddr);
 	fe->spte->swap_slot = swap_slot;
-	//printf("swap_slot : %d\n",fe->spte->swap_slot);
 	list_remove(e);
 
-	//palloc_free_page(fe->kaddr);
-	//pagedir_clear_page(fe->t->pagedir,fe->spte->vaddr);	
 	lock_release(&frame_lock);
 	return fe;
 }
@@ -71,7 +67,6 @@ void add_frame_e(struct spt_e* spte){
 }
 
 void* frame_allocate(void* upage){
-	lock_acquire(&frame_lock);
 
 	void *frame = palloc_get_page(PAL_USER);
 
@@ -81,16 +76,25 @@ void* frame_allocate(void* upage){
 		palloc_free_page(evicted->kaddr);
 
 		frame = palloc_get_page(PAL_USER);
-		ASSERT(frame != NULL);
+		//ASSERT(frame != NULL);
+		if(frame == NULL){
+			printf("frame is NULL\n");
+			exit(-1);
+		}
 	}
 	
 	struct spt_e find_e;
 	find_e.vaddr = upage;
 	struct hash_elem *e1 = hash_find(&thread_current()->spt,&find_e.elem);
-	if(e1 == NULL)
-		exit(-1);
+	if(e1 == NULL){ //stack growth
+		add_spte(upage,0,0,true,NULL,0);
+		e1 = hash_find(&thread_current()->spt,&find_e.elem);
+		if( e1 == NULL)
+			printf("fuck\n");
+	}
 	struct spt_e* found1 = hash_entry(e1,struct spt_e,elem);	
 	add_frame_e(found1);	
 
-	lock_release(&frame_lock);
+	//lock_release(&frame_lock);
+	return frame;
 }

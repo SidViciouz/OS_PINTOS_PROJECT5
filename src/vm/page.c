@@ -25,3 +25,4 @@ void add_spte(void* upage,size_t page_read_bytes,size_t page_zero_bytes,bool wri
 	spte->swap_slot = -1;
 	hash_insert(&thread_current()->spt,&(spte->elem));
 }
+
