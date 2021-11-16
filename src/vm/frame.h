@@ -10,13 +10,14 @@ struct frame_e{
 	struct spt_e *spte;
 };
 
+void frame_print();
 void init_frame_list(void);
 
 void insert_frame_e(struct list_elem *e);
 
 struct frame_e* free_frame();
 
-void add_frame_e(struct spt_e* spte);
+void add_frame_e(struct spt_e* spte,void *kaddr);
 
 void* frame_allocate(void* upage);
 #endif

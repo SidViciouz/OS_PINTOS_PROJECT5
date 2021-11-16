@@ -5,6 +5,8 @@
 
 static struct bitmap *swap_bitmap;
 
+static const size_t SECTORS_PER_PAGE = PGSIZE / BLOCK_SECTOR_SIZE;
+
 void init_swap_bitmap()
 {
 	swap_bitmap = bitmap_create(1024);
@@ -21,17 +23,22 @@ int find_swap_slot()
 }
 
 int swap_to_disk(void* kaddr){
-	
+
+	ASSERT(kaddr >= PHYS_BASE);
 	struct block* b = block_get_role(BLOCK_SWAP);
 	int swap_slot = find_swap_slot();
-	
+
 	if(swap_slot == -1){
-		PANIC("no swap slot left");
 		return -1;
 	}
 
-	for(int i=0; i<8; i++)
-		block_write(b,swap_slot*8+i,kaddr +i*BLOCK_SECTOR_SIZE);	
+	//printf("swap to disk1\n");
+	for(int i=0; i<SECTORS_PER_PAGE; i++){
+		//printf("block write1\n");
+		block_write(b,swap_slot*SECTORS_PER_PAGE + i,kaddr +(i*BLOCK_SECTOR_SIZE));
+		//printf("block write2\n");
+	}
+	//printf("swap to disk2\n");
 	bitmap_set(swap_bitmap,swap_slot,true);
 	
 	return swap_slot;
@@ -41,7 +48,7 @@ void swap_to_addr(int swap_slot,void * kaddr){
 	
 	struct block* b = block_get_role(BLOCK_SWAP);
 
-	for(int i=0; i<8; i++)
-		block_read(b,swap_slot*8+i,kaddr+i*BLOCK_SECTOR_SIZE);	
+	for(int i=0; i<SECTORS_PER_PAGE; i++)
+		block_read(b,swap_slot*SECTORS_PER_PAGE+i,kaddr+(i*BLOCK_SECTOR_SIZE));	
 	bitmap_set(swap_bitmap,swap_slot,false);
 }
