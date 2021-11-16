@@ -111,3 +111,19 @@ void* frame_allocate(void* upage){
 
 	return frame;
 }
+
+void frame_free(void* kpage){
+
+	lock_acquire(&frame_lock);
+	struct list_elem *e;
+	for(e = list_begin(&frame_list); e != list_end(&frame_list); e = list_next(e)){
+		struct frame_e *fe = list_entry(e,struct frame_e,elem);
+		if(fe->kaddr == kpage){
+			list_remove(&fe->elem);
+			break;
+		}
+	}
+//add palloc?	
+	lock_release(&frame_lock);
+
+}
