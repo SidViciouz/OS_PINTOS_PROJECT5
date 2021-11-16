@@ -14,6 +14,9 @@ void init_frame_list(void);
 
 void insert_frame_e(struct list_elem *e);
 
-void free_frame(int swap_slot);
+struct frame_e* free_frame();
 
+void add_frame_e(struct spt_e* spte);
+
+void* frame_allocate(void* upage);
 #endif
