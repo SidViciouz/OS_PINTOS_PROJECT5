@@ -95,7 +95,6 @@ static bool load_page_from_filesys(struct spt_e *spte,void *kpage){
 	if(n_read != (int)spte->page_read_bytes)
 		return false;
 
-	ASSERT(spte->page_read_bytes + spte->page_zero_bytes == PGSIZE);
 	memset(kpage + n_read,0,spte->page_zero_bytes);
 	return true;
 }
