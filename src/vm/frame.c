@@ -40,7 +40,7 @@ struct frame_e* free_frame()
 
 	e = list_begin(&frame_list);
 	int j= list_size(&frame_list);
-	for(int i=0; i<2*list_size(&frame_list); i++)
+	for(int i=0; i<=2*list_size(&frame_list); i++)
 	{
 		fe = list_entry(e,struct frame_e,elem);
 		if(pagedir_is_accessed(thread_current()->pagedir,fe->spte->vaddr)){
@@ -63,8 +63,6 @@ struct frame_e* free_frame()
 			e = list_next(e);
 		}
 	}
-	//int swap_slot = swap_to_disk(fe->kaddr);
-	//fe->spte->swap_slot = swap_slot;
 	list_remove(e);
 
 	lock_release(&frame_lock);
@@ -120,10 +118,11 @@ void frame_free(void* kpage){
 		struct frame_e *fe = list_entry(e,struct frame_e,elem);
 		if(fe->kaddr == kpage){
 			list_remove(&fe->elem);
+			free(fe);
 			break;
 		}
 	}
-//add palloc?	
+	palloc_free_page(kpage);	
 	lock_release(&frame_lock);
 
 }

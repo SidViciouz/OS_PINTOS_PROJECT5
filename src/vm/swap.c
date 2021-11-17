@@ -52,3 +52,12 @@ void swap_to_addr(int swap_slot,void * kaddr){
 		block_read(b,swap_slot*SECTORS_PER_PAGE+i,kaddr+(i*BLOCK_SECTOR_SIZE));	
 	bitmap_set(swap_bitmap,swap_slot,false);
 }
+
+void swap_blank()
+{
+
+	struct block* b = block_get_role(BLOCK_SWAP);
+	int swap_size = block_size(b)/SECTORS_PER_PAGE;
+	printf("bitmap used slot:%d\n",bitmap_count(swap_bitmap,0,1024,true));
+	printf("swap_size : %d\n",swap_size);
+}
