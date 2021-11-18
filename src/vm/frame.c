@@ -92,7 +92,7 @@ void* frame_allocate(void* upage,enum palloc_flags flags){
 	find_e.vaddr = upage;
 	struct hash_elem *e1 = hash_find(&thread_current()->spt,&find_e.elem);
 	if(e1 == NULL){ //stack growth
-		add_spte(upage,0,0,true,NULL,0);
+		add_spte(upage,frame,0,0,true,NULL,0);
 		e1 = hash_find(&thread_current()->spt,&find_e.elem);
 		if( e1 == NULL)
 			printf("e1 is NULL\n");

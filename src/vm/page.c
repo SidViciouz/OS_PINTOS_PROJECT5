@@ -16,9 +16,10 @@ bool hash_compare(const struct hash_elem *a,const struct hash_elem *b,void *aux)
 
 	return e1->vaddr < e2->vaddr;
 }
-void add_spte(void* upage,size_t page_read_bytes,size_t page_zero_bytes,bool writable,struct file* file,size_t ofs){
+void add_spte(void* upage,void* kpage,size_t page_read_bytes,size_t page_zero_bytes,bool writable,struct file* file,size_t ofs){
 	struct spt_e *spte = (struct spte *)malloc(sizeof(struct spt_e)); //insert spte
 	spte->vaddr = upage;
+	spte->kpage = kpage;
 	spte->page_read_bytes = page_read_bytes;
 	spte->page_zero_bytes = page_zero_bytes;
  	spte->writable = writable;
