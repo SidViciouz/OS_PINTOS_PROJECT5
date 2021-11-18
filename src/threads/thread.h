@@ -133,6 +133,7 @@ struct thread
 
     /*proj4*/
     struct hash spt;
+    uint8_t *current_esp;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

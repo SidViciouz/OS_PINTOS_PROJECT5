@@ -6,22 +6,31 @@
 #include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
+static struct lock syslock;
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&syslock);
 }
 
 static void
 syscall_handler (struct intr_frame *f) 
 {
   int syscall_no = *(int*)(f->esp);
-/*
-  if(!is_user_vaddr(f->esp))
-	  exit(-1);*/
-  if(!is_valid_address(f->esp))
+	
+  thread_current()->current_esp = f->esp;
+
+  if(!is_user_vaddr(f->esp)){
 	  exit(-1);
+  }
+  /*
+  if(!is_valid_address(f->esp))
+	  exit(-1);*/
+
+  thread_current()->current_esp = f->esp;
+
   if(syscall_no == SYS_HALT){
 	  halt();
   }
@@ -99,7 +108,6 @@ syscall_handler (struct intr_frame *f)
 	  close(*(int*)(f->esp+4));
   }
   //thread_exit ();
-  //thread_exit ();
 }
 
 void halt(){
@@ -113,18 +121,22 @@ void exit(int exit_number){
 
 }
 int exec(const char* filename){
-	 return  process_execute(filename);
+	 lock_acquire(&syslock);
+	 int pid =  process_execute(filename);
+	 lock_release(&syslock);
+	 return pid;
 }
 int wait(int pid){
 	return  process_wait(pid);
 }
 int read(int fd,int *buffer,unsigned size){
-	/*
-	if(!is_user_vaddr(buffer))
-		exit(-1);*/
-	if(!is_valid_address(buffer))
+	
+	if(!is_user_vaddr(buffer)){
 		exit(-1);
-	//materialize user address validity check using spt
+	}
+	if(!is_valid_address(buffer)){
+		exit(-1);
+	}
 	if(fd == 0){
 		for(int i=0; i<size; i++){
 			*buffer = input_getc();
@@ -154,8 +166,12 @@ int read(int fd,int *buffer,unsigned size){
 	}
 }
 int write(int fd,int *buffer,unsigned size){
-	if(!is_user_vaddr(buffer))
+	if(!is_user_vaddr(buffer)){
 		exit(-1);
+	}
+	if(!is_valid_address(buffer)){
+		exit(-1);
+	}
 	if(fd == 1){
 		putbuf((const char*)buffer,size);
 		return size;
@@ -198,20 +214,36 @@ int max_of_four_int(int a,int b,int c,int d){
 	return retval;
 }
 int create(const char* file, unsigned initial_size){
-	if(file == NULL)
+	lock_acquire(&syslock);
+	int ret; 
+	if(file == NULL){
+	 	lock_release(&syslock);
 		exit(-1);
-	return filesys_create(file,initial_size);
+	}
+	ret = filesys_create(file,initial_size);
+	lock_release(&syslock);
+	return ret;
 }
 int remove(const char* file){
-	return filesys_remove(file);
+	lock_acquire(&syslock);
+	int ret = filesys_remove(file);
+	lock_release(&syslock);
+
+	return ret;
 }
 int open(const char* file){
-	if(file == NULL)
+	lock_acquire(&syslock);
+
+	if(file == NULL){
+	 	lock_release(&syslock);
 		return -1;
+	}
 	struct file* f = filesys_open(file);
 	int fd = -1;
-	if(f == NULL)
+	if(f == NULL){
+	 	lock_release(&syslock);
 		return -1;
+	}
 	
 	if(thread_current()->file_bitmap == NULL){
 		thread_current()->file_bitmap = bitmap_create(64);
@@ -234,23 +266,33 @@ int open(const char* file){
 	if(thread_findname_foreach(file))
 		file_deny_write(item->f);
 
+	lock_release(&syslock);
 	return fd;
 }
 int filesize(int fd){
-	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1)
+	lock_acquire(&syslock);
+	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
+	 	lock_release(&syslock);
 		return 0;
+	}
 	struct list_elem* elem;
 	struct list_item* item;
 	for(elem = list_begin(&(thread_current()->file_list));
 		elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
-		if((item = list_entry(elem,struct list_item,elem))->fd == fd)
+		if((item = list_entry(elem,struct list_item,elem))->fd == fd){
+	 		lock_release(&syslock);
 			return file_length(item->f);
+		}
 	}
+	lock_release(&syslock);
 	return 0;
 }
 void seek(int fd, unsigned position){
-	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1)
+	lock_acquire(&syslock);
+	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
+	 	lock_release(&syslock);
 		return ;
+	}
 	struct list_elem* elem;
 	struct list_item* item;
 	for(elem = list_begin(&(thread_current()->file_list));
@@ -261,22 +303,29 @@ void seek(int fd, unsigned position){
 		}
 	}
 
+	lock_release(&syslock);
 	return;
 }
 unsigned tell(int fd){
-	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1)
+	lock_acquire(&syslock);
+	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
+	 	lock_release(&syslock);
 		return 0;
+	}
 	struct list_elem* elem;
 	struct list_item* item;
 	for(elem = list_begin(&(thread_current()->file_list));
 		elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
 		if((item = list_entry(elem,struct list_item,elem))->fd == fd){
+	 		lock_release(&syslock);
 			return file_tell(item->f);
 		}
 	}
+	lock_release(&syslock);
 	return 0;
 }
 void close(int fd){
+	lock_acquire(&syslock);
 	if(thread_current()->file_bitmap == NULL){
 		thread_current()->file_bitmap = bitmap_create(64);
 		bitmap_set(thread_current()->file_bitmap,0,true);
@@ -299,6 +348,7 @@ void close(int fd){
 			break;
 		}
 	}
+	lock_release(&syslock);
 	return;
 }
 int is_valid_address(int* buffer)

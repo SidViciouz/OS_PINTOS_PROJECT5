@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "devices/timer.h"
+#include "vm/frame.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -104,7 +105,7 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&blocked_list);
-  init_frame_list();
+  //init_frame_list();
   load_avg = 0;
 
   /* Set up a thread structure for the running thread. */

@@ -2,6 +2,7 @@
 #define FRAME_HEADER
 
 #include "page.h"
+#include "threads/palloc.h"
 
 struct frame_e{
 	struct list_elem elem;
@@ -19,7 +20,7 @@ struct frame_e* free_frame();
 
 void add_frame_e(struct spt_e* spte,void *kaddr);
 
-void* frame_allocate(void* upage);
+void* frame_allocate(void* upage,enum palloc_flags flags);
 
 void frame_free(void*);
 #endif

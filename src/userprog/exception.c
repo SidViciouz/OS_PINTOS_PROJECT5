@@ -64,6 +64,7 @@ exception_init (void)
      We need to disable interrupts for page faults because the
      fault address is stored in CR2 and needs to be preserved. */
   intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
+
 }
 
 /* Prints exception statistics. */
@@ -151,119 +152,77 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-/*
-  if(!user){
-	  //printf("user fault\n");
-	  //printf("%x\n",fault_addr);
-	  exit(-1);
-  }*/
+
   if(is_kernel_vaddr(fault_addr)){
-	  //printf("kernel address fault\n");
 	  exit(-1);
   }
 
-  if(not_present){  //file을 읽는 중에 다시 읽으려고 하니 syn-write에서 에러가 발생함.
-	  	  struct spt_e find_element;
-		  find_element.vaddr = pg_round_down(fault_addr);
-		  struct hash_elem *e = hash_find(&thread_current()->spt,&find_element.elem);
-		  if(e == NULL){
-			  //determining whether it is growable region is needed to be added.
-	  		  unsigned number_of_page = (PHYS_BASE - f->esp)/4096 + 1;
-			  unsigned number_of_page_to_allocate = ((unsigned)PHYS_BASE - (unsigned)fault_addr)/4096 + 2;
-			  //printf("a : %x\n",f->esp);
-			  //printf("b : %x\n",fault_addr);
-			  if(number_of_page_to_allocate > 2048)
-				 exit(-1);
-			  
-			  //printf("to allocate : %u\n",number_of_page_to_allocate - number_of_page);
-			  uint8_t *vaddr = pg_round_down(fault_addr);
-			  for(int i=0; i<number_of_page_to_allocate - number_of_page; i++){
-				 uint8_t *page = palloc_get_page(PAL_USER);
-				 struct thread *t = thread_current();
-		  		 if(!call_install_page(vaddr,page,true)){ //writable need to edited
-				 	palloc_free_page(page);
-			  		exit(-1);
-				 }
-				 else{
-      					add_spte(vaddr,PGSIZE,0,true,NULL,0);
-					struct spt_e find_e;
-		  			find_e.vaddr = vaddr;
-					struct hash_elem *e1 = hash_find(&thread_current()->spt,&find_e.elem);
-					if(e1 == NULL)
-						exit(-1);
-		  			struct spt_e* found1 = hash_entry(e1,struct spt_e,elem);
+  if(!not_present){
+	  exit(-1);
+  }
 
-      					struct frame_e *fe = (struct frame_e*)malloc(sizeof(struct frame_e));
-		      			fe->kaddr = pagedir_get_page(thread_current()->pagedir,found1->vaddr);
- 					fe->t = thread_current();
-		  		      	fe->spte = found1;
-      					insert_frame_e(&fe->elem);
-				 }
-				 vaddr += PGSIZE;
-
-			  }
-			  return; 
-			  //printf("to allocate : %u\n",number_of_page_to_allocate);
-			  //printf("growable error\n");
-			  //exit(-1);
-		  }
-		  uint8_t *kpage = palloc_get_page(PAL_USER);
-		  if(kpage == NULL){
-			  //memory full. i need to add swapping.
-			  //printf("kpage == NULL\n");
-			  struct block* b = block_get_role(BLOCK_SWAP);
-			  if(b == NULL){
-				  printf("can't use swap partition\n");
-			  	  exit(-1);
-			  }
-			  else{
-			  	 block_sector_t sizeofblock = block_size(b);
-				 //printf("%d %x\n",sizeofblock,sizeofblock);
-				 int empty_swap_slot_idx = find_swap_slot();
-				 if(empty_swap_slot_idx != -1){
-					//palloc_free_page();
-					//dirty bit에 따라 swap slot에 swap in하는거 추가해야함
-					free_frame(empty_swap_slot_idx);
-					return;
-				 }
-				 exit(-1);
-				 //return;
-			  }
-		  }
-		  struct spt_e* found = hash_entry(e,struct spt_e,elem);
-		  
-		  file_seek(found->file,found->ofs);
-		  if(file_read(found->file,kpage,found->page_read_bytes) != (int) found->page_read_bytes){
-			  palloc_free_page(kpage);
-			  //printf("file read error \n");
-			  exit(-1);
-		  }
-		  memset(kpage + found->page_read_bytes,0,found->page_zero_bytes);
-	
-		  struct thread *t = thread_current();
-		  if(!call_install_page(found->vaddr,kpage,found->writable)){
-			  palloc_free_page(kpage);
-			  //printf("install page error\n");
-			  exit(-1);
-		  }
-		  else{
-		  	//swap in 되었던 거라면 새로 load하는 것이 아닌 swap out하는 부분
-			  if(found->swap_slot != -1){
-				found->swap_slot = -1;	
-				swap_to_addr(kpage);
-			  }
-      			struct frame_e *fe = (struct frame_e*)malloc(sizeof(struct frame_e));
-      			fe->kaddr = pagedir_get_page(thread_current()->pagedir,found->vaddr);
- 			fe->t = thread_current();
-  		      	fe->spte = found;
-      			insert_frame_e(&fe->elem);
-		  }
-	  return;
+  //frame_print(); 
+  struct spt_e find_element;
+  find_element.vaddr = pg_round_down(fault_addr);
+  struct hash_elem *e = hash_find(&thread_current()->spt,&find_element.elem);
+  if(e == NULL){
+		  //determining whether it is growable region is needed to be added.  
+	  void *esp = user ? f->esp : thread_current()->current_esp;
+	  bool on_stack_frame,is_stack_addr;
+	  on_stack_frame  = (esp <= fault_addr || fault_addr == f->esp -4 || fault_addr == f->esp -32);
+	  is_stack_addr = (PHYS_BASE - 0x800000 <= fault_addr && fault_addr < PHYS_BASE);
+	  if(!on_stack_frame || !is_stack_addr){
+		  //printf("on_stack_frame error\n");
+		//swap_blank();
+		  exit(-1);
+	  }
+	  else{
+		 uint8_t *vaddr = pg_round_down(fault_addr);
+		 uint8_t *page = frame_allocate(vaddr,PAL_ZERO);
+		 struct thread *t = thread_current();
+		 memset(page,0,PGSIZE);
+		 if(!call_install_page(vaddr,page,true)){ //writable need to edited
+			frame_free(page);
+			printf("install page error\n");
+			exit(-1);
+		 }
+		 return;
+	  }
 	}
-  /*
-  else if(write && user)
-	exit(-1);  */
-  exit(-1);
+  uint8_t *vaddr = pg_round_down(fault_addr);
+  uint8_t *kpage = frame_allocate(vaddr,PAL_USER);
+  if(kpage == NULL){
+	printf("can't use swap partition\n");
+	exit(-1);
+  }
+  struct spt_e* found = hash_entry(e,struct spt_e,elem);
+  //swap in needed to be added.
+  if(found->swap_slot != -1){
+	swap_to_addr(found->swap_slot,kpage);
+	found->swap_slot = -1;
+	if(!call_install_page(found->vaddr,kpage,found->writable)){
+		frame_free(kpage);
+		printf("install page error\n");
+		exit(-1);
+	}
+	return;
+  }	  
+
+  file_seek(found->file,found->ofs);
+  if(file_read(found->file,kpage,found->page_read_bytes) != (int) found->page_read_bytes){
+	  frame_free(kpage);
+	  printf("file read error \n");
+	  exit(-1);
+  }
+  memset(kpage + found->page_read_bytes,0,found->page_zero_bytes);
+
+  if(!call_install_page(found->vaddr,kpage,found->writable)){
+	  frame_free(kpage);	
+	  printf("install page error\n");
+	  exit(-1);
+  }
+  return;
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
@@ -272,6 +231,7 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
   kill (f);
 }
 

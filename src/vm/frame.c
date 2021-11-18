@@ -34,32 +34,25 @@ void insert_frame_e(struct list_elem* e)
 struct frame_e* free_frame()
 {
 	lock_acquire(&frame_lock);
-	//dirty bit에 따라 swap slot에 swap in하는거 추가해야함
-	struct list_elem *e;//= list_pop_back(&frame_list); //list_pop_back에서 lru로 바꿔야함.
+	struct list_elem *e;
 	struct frame_e *fe = list_entry(e,struct frame_e,elem);
-
 	e = list_begin(&frame_list);
 	int j= list_size(&frame_list);
 	for(int i=0; i<=2*list_size(&frame_list); i++)
 	{
 		fe = list_entry(e,struct frame_e,elem);
 		if(pagedir_is_accessed(thread_current()->pagedir,fe->spte->vaddr)){
-			//printf("1\n");
 			pagedir_set_accessed(thread_current()->pagedir,fe->spte->vaddr,false);	
 		}
 		
 		else{
-			//printf("2\n");
 			break;
 		}
 	
-
 		if( list_next(e) == list_end(&frame_list)){
-			//printf("3\n");
 			e = list_begin(&frame_list);
 		}
 		else{
-			//printf("4\n");
 			e = list_next(e);
 		}
 	}
@@ -77,9 +70,9 @@ void add_frame_e(struct spt_e* spte,void *kaddr){
       	insert_frame_e(&fe->elem);	
 }
 
-void* frame_allocate(void* upage){
+void* frame_allocate(void* upage,enum palloc_flags flags){
 
-	void *frame = palloc_get_page(PAL_USER);
+	void *frame = palloc_get_page(PAL_USER|flags);
 
 	if(frame == NULL){
 		struct frame_e* evicted = free_frame();

@@ -51,7 +51,7 @@ bool load_page(struct hash *spt,int *pagedir, void *upage){
 	if(spte->status == ON_FRAME)
 		return true;
 
-	void *frame_page = frame_allocate(upage);
+	void *frame_page;
 	if(frame_page == NULL)
 		return false;
 
