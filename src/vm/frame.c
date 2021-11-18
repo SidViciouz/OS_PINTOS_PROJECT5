@@ -103,6 +103,20 @@ void* frame_allocate(void* upage,enum palloc_flags flags){
 	return frame;
 }
 
+void frame_free_without_palloc(void* kpage){
+
+	lock_acquire(&frame_lock);
+	struct list_elem *e;
+	for(e = list_begin(&frame_list); e != list_end(&frame_list); e = list_next(e)){
+		struct frame_e *fe = list_entry(e,struct frame_e,elem);
+		if(fe->kaddr == kpage){
+			list_remove(&fe->elem);
+			free(fe);
+			break;
+		}
+	}
+	lock_release(&frame_lock);
+}
 void frame_free(void* kpage){
 
 	lock_acquire(&frame_lock);
@@ -117,5 +131,4 @@ void frame_free(void* kpage){
 	}
 	palloc_free_page(kpage);	
 	lock_release(&frame_lock);
-
 }

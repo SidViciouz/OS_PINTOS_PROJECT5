@@ -16,6 +16,16 @@ bool hash_compare(const struct hash_elem *a,const struct hash_elem *b,void *aux)
 
 	return e1->vaddr < e2->vaddr;
 }
+void spte_destroy(struct hash_elem *elem,void *aux)
+{
+	struct spt_e *spte = hash_entry(elem,struct spt_e,elem);
+
+	if(spte->kpage != NULL){
+		frame_free_without_palloc(spte->kpage);	
+	}
+	free(spte);
+}
+
 void add_spte(void* upage,void* kpage,size_t page_read_bytes,size_t page_zero_bytes,bool writable,struct file* file,size_t ofs){
 	struct spt_e *spte = (struct spte *)malloc(sizeof(struct spt_e)); //insert spte
 	spte->vaddr = upage;
@@ -28,7 +38,7 @@ void add_spte(void* upage,void* kpage,size_t page_read_bytes,size_t page_zero_by
 	spte->swap_slot = -1;
 	hash_insert(&thread_current()->spt,&(spte->elem));
 }
-
+/*
 struct spt_e* spt_lookup(struct hash *spt,void *page){
 	struct spt_e spte;
 	spte.vaddr = page;
@@ -98,4 +108,4 @@ static bool load_page_from_filesys(struct spt_e *spte,void *kpage){
 
 	memset(kpage + n_read,0,spte->page_zero_bytes);
 	return true;
-}
+}*/

@@ -23,4 +23,5 @@ void add_frame_e(struct spt_e* spte,void *kaddr);
 void* frame_allocate(void* upage,enum palloc_flags flags);
 
 void frame_free(void*);
+void frame_free_without_palloc(void* kpage);
 #endif
