@@ -33,7 +33,6 @@ void insert_frame_e(struct list_elem* e)
 
 struct frame_e* free_frame()
 {
-	lock_acquire(&frame_lock);
 	struct list_elem *e;
 	struct frame_e *fe = list_entry(e,struct frame_e,elem);
 	e = list_begin(&frame_list);
@@ -56,8 +55,8 @@ struct frame_e* free_frame()
 			e = list_next(e);
 		}
 	}
+	lock_acquire(&frame_lock);
 	list_remove(e);
-
 	lock_release(&frame_lock);
 	return fe;
 }
