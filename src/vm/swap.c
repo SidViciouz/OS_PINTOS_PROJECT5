@@ -11,6 +11,10 @@ void init_swap_bitmap()
 {
 	swap_bitmap = bitmap_create(1024);
 }
+void destroy_swap_bitmap()
+{
+	bitmap_destroy(swap_bitmap);
+}
 
 int find_swap_slot()
 {
