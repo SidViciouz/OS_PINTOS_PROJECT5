@@ -19,6 +19,7 @@ void insert_frame_e(struct list_elem *e);
 struct frame_e* free_frame();
 
 void add_frame_e(struct spt_e* spte,void *kaddr);
+struct frame_e* clock_next();
 
 void* frame_allocate(void* upage,enum palloc_flags flags);
 

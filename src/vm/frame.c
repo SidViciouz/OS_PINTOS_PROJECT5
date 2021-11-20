@@ -5,6 +5,8 @@
 static struct list frame_list;
 static struct lock frame_lock;
 
+struct list_elem *clock_ptr;
+
 void frame_print()
 {
 	int i = 0;
@@ -21,6 +23,7 @@ void frame_print()
 void init_frame_list(void)
 {
 	list_init(&frame_list);
+	clock_ptr = list_begin(&frame_list);
 	lock_init(&frame_lock);
 }
 
@@ -33,13 +36,12 @@ void insert_frame_e(struct list_elem* e)
 
 struct frame_e* free_frame()
 {
-	struct list_elem *e;
-	struct frame_e *fe = list_entry(e,struct frame_e,elem);
-	e = list_begin(&frame_list);
+	struct frame_e *fe;
+	
 	int j= list_size(&frame_list);
-	for(int i=0; i<=2*list_size(&frame_list); i++)
+	for(int i=0; i<=2*j; i++)
 	{
-		fe = list_entry(e,struct frame_e,elem);
+		fe = clock_next();
 		if(pagedir_is_accessed(thread_current()->pagedir,fe->spte->vaddr)){
 			pagedir_set_accessed(thread_current()->pagedir,fe->spte->vaddr,false);	
 		}
@@ -47,17 +49,7 @@ struct frame_e* free_frame()
 		else{
 			break;
 		}
-	
-		if( list_next(e) == list_end(&frame_list)){
-			e = list_begin(&frame_list);
-		}
-		else{
-			e = list_next(e);
-		}
 	}
-	lock_acquire(&frame_lock);
-	list_remove(e);
-	lock_release(&frame_lock);
 	return fe;
 }
 
@@ -69,6 +61,18 @@ void add_frame_e(struct spt_e* spte,void *kaddr){
       	insert_frame_e(&fe->elem);	
 }
 
+struct frame_e* clock_next()
+{
+	if(clock_ptr == NULL || clock_ptr == list_end(&frame_list))
+		clock_ptr = list_begin(&frame_list);
+	else
+		clock_ptr = list_next(&frame_list);
+
+	struct frame_e *e = list_entry(clock_ptr,struct frame_e,elem);
+
+	return e;
+}
+
 void* frame_allocate(void* upage,enum palloc_flags flags){
 
 	void *frame = palloc_get_page(PAL_USER|flags);
@@ -77,9 +81,9 @@ void* frame_allocate(void* upage,enum palloc_flags flags){
 		struct frame_e* evicted = free_frame();
 		evicted->spte->swap_slot = swap_to_disk(evicted->kaddr);
 		pagedir_clear_page(evicted->t->pagedir,evicted->spte->vaddr);
-		palloc_free_page(evicted->kaddr);
+		frame_free(evicted->kaddr);
 
-		frame = palloc_get_page(PAL_USER);
+		frame = palloc_get_page(PAL_USER|flags);
 
 		if(frame == NULL){
 			printf("frame is NULL\n");
@@ -128,6 +132,7 @@ void frame_free(void* kpage){
 			break;
 		}
 	}
-	palloc_free_page(kpage);	
+	if(kpage != NULL)
+		palloc_free_page(kpage);	
 	lock_release(&frame_lock);
 }
