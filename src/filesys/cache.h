@@ -22,5 +22,6 @@ struct buffer_cache_entry *buffer_cache_lookup(block_sector_t);
 struct buffer_cache_entry *buffer_cache_select_victim();
 void buffer_cache_flush_entry(struct buffer_cache_entry *);
 void buffer_cache_flush_all();
+struct buffer_cache_entry* next_clock_number();
 
 #endif
