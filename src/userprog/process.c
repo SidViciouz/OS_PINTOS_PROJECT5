@@ -63,11 +63,9 @@ start_process (void *file_name_)
   bool success;
   struct list_elem* element;
   struct thread* temp;
-
-  //thread_current()->spt  = malloc(sizeof(struct hash));
+#ifdef VM
   hash_init(&thread_current()->spt,hash_value,hash_compare,NULL);
-  //init_swap_bitmap();
-  //hash_init(&(thread_current()->spt),hash_value,hash_compare,NULL);
+#endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -148,10 +146,14 @@ process_exit (void)
 		  elem = list_remove(elem);
 		  free(item);
 	  }
-  bitmap_destroy(cur->file_bitmap); 
+  destroy_file_bitmap();
+#ifdef VM
+  hash_destroy(&cur->spt,spte_destroy);
+#endif
 
   sema_up(&(cur->parent_sema));
   sema_down(&(cur->parent_sema2));
+
   
   pd = cur->pagedir;
   if (pd != NULL) 
@@ -167,6 +169,9 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  //destroy_swap_bitmap();
+
+
 }
 
 /* Sets up the CPU for running user code in the current
@@ -484,14 +489,35 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      add_spte(upage,page_read_bytes,page_zero_bytes,writable,file,ofs);
+#ifdef VM
+      add_spte(upage,NULL,page_read_bytes,page_zero_bytes,writable,file,ofs);
+#else
+      uint8_t *kpage = palloc_get_page(PAL_USER);
+      if(kpage == NULL)
+	      return false;
+
+      if(file_read(file,kpage,page_read_bytes) != (int)page_read_bytes)
+      {
+	      palloc_free_page(kpage);
+	      return false;
+      }
+      memset(kpage + page_read_bytes,0,page_zero_bytes);
+
+      if(!install_page(upage,kpage,writable))
+      {
+	      palloc_free_page(kpage);
+	      return false;
+      }
+#endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
       //ofs += page_read_bytes;
+#ifdef VM
       ofs += PGSIZE;
+#endif
     }
   return true;
 }
@@ -504,17 +530,23 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+#ifdef VM
   kpage = frame_allocate(((uint8_t *)PHYS_BASE)-PGSIZE,PAL_ZERO);
   memset(kpage,0,PGSIZE);
+#else
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+#endif
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        //palloc_free_page (kpage);
+#ifdef VM
 	frame_free(kpage);	
+#else
+      	palloc_free_page(kpage);
+#endif
     }
 
   return success;

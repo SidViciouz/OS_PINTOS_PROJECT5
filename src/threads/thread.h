@@ -130,10 +130,13 @@ struct thread
     uint64_t ticks;
     int nice;
     int64_t recent_cpu;
-
+#ifdef VM
     /*proj4*/
     struct hash spt;
-    uint8_t *current_esp;
+#endif
+
+    /*proj5*/
+    struct dir *current_dir;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -191,4 +194,5 @@ void calculate_load_avg();
 void calculate_recent_cpu();
 void calculate_priority();
 
+void destroy_file_bitmap();
 #endif /* threads/thread.h */

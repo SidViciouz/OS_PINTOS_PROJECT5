@@ -15,7 +15,9 @@
 #include "userprog/process.h"
 #endif
 #include "devices/timer.h"
+#ifdef VM
 #include "vm/frame.h"
+#endif
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -545,7 +547,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->file_list));
   t->file_bitmap = NULL;
 
-/* add in proj3 */
+/*add in proj3 */
   t->nice = running_thread()->nice;
   t->recent_cpu = running_thread()->recent_cpu;
 
@@ -827,4 +829,10 @@ void calculate_priority()
 
   if(old_priority > thread_current()->priority)
 	  intr_yield_on_return();
+}
+void destroy_file_bitmap()
+{
+	if(thread_current()->file_bitmap != NULL){
+		bitmap_destroy(thread_current()->file_bitmap);
+	}
 }

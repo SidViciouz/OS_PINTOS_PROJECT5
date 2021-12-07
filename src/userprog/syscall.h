@@ -18,7 +18,4 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 
-//proj4
-int is_valid_address(int* buffer);
-
 #endif /* userprog/syscall.h */

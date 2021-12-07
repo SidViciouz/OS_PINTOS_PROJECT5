@@ -153,6 +153,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
   if(is_kernel_vaddr(fault_addr)){
 	  exit(-1);
   }
@@ -160,20 +161,14 @@ page_fault (struct intr_frame *f)
   if(!not_present){
 	  exit(-1);
   }
-
-  //frame_print(); 
   struct spt_e find_element;
   find_element.vaddr = pg_round_down(fault_addr);
   struct hash_elem *e = hash_find(&thread_current()->spt,&find_element.elem);
   if(e == NULL){
-		  //determining whether it is growable region is needed to be added.  
-	  void *esp = user ? f->esp : thread_current()->current_esp;
 	  bool on_stack_frame,is_stack_addr;
-	  on_stack_frame  = (esp <= fault_addr || fault_addr == f->esp -4 || fault_addr == f->esp -32);
+	  on_stack_frame  = (f->esp <= fault_addr || fault_addr == f->esp - 32);
 	  is_stack_addr = (PHYS_BASE - 0x800000 <= fault_addr && fault_addr < PHYS_BASE);
 	  if(!on_stack_frame || !is_stack_addr){
-		  //printf("on_stack_frame error\n");
-		//swap_blank();
 		  exit(-1);
 	  }
 	  else{
@@ -196,6 +191,7 @@ page_fault (struct intr_frame *f)
 	exit(-1);
   }
   struct spt_e* found = hash_entry(e,struct spt_e,elem);
+  found->kpage = kpage;
   //swap in needed to be added.
   if(found->swap_slot != -1){
 	swap_to_addr(found->swap_slot,kpage);
@@ -222,7 +218,15 @@ page_fault (struct intr_frame *f)
 	  exit(-1);
   }
   return;
-
+#else
+	if(!user){
+		exit(-1);
+	}
+	else if(is_kernel_vaddr(fault_addr))
+		exit(-1);
+	else if(not_present)
+		exit(-1);
+#endif
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

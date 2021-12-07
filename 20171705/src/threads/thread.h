@@ -4,8 +4,10 @@
 #include <debug.h>
 #include <list.h>
 #include <bitmap.h>
+#include <hash.h>
 #include "synch.h"
 #include <stdint.h>
+#include "vm/page.h"
 
 #ifndef USERPROG
 /* project 3 */
@@ -128,6 +130,9 @@ struct thread
     uint64_t ticks;
     int nice;
     int64_t recent_cpu;
+
+    /*proj4*/
+    struct hash spt;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -185,4 +190,5 @@ void calculate_load_avg();
 void calculate_recent_cpu();
 void calculate_priority();
 
+void destroy_file_bitmap();
 #endif /* threads/thread.h */

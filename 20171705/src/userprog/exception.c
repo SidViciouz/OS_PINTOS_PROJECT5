@@ -6,6 +6,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include <hash.h>
+#include "threads/palloc.h"
+#include "devices/block.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -60,6 +64,7 @@ exception_init (void)
      We need to disable interrupts for page faults because the
      fault address is stored in CR2 and needs to be preserved. */
   intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
+
 }
 
 /* Prints exception statistics. */
@@ -128,7 +133,6 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -137,7 +141,6 @@ page_fault (struct intr_frame *f)
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
-
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
   intr_enable ();
@@ -150,15 +153,71 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if(!user)
+  if(is_kernel_vaddr(fault_addr)){
 	  exit(-1);
+  }
 
-  else if(is_kernel_vaddr(fault_addr))
+  if(!not_present){
 	  exit(-1);
+  }
 
-  else if(not_present)
+  struct spt_e find_element;
+  find_element.vaddr = pg_round_down(fault_addr);
+  struct hash_elem *e = hash_find(&thread_current()->spt,&find_element.elem);
+  if(e == NULL){
+	  bool on_stack_frame,is_stack_addr;
+	  on_stack_frame  = (f->esp <= fault_addr || fault_addr == f->esp - 32);
+	  is_stack_addr = (PHYS_BASE - 0x800000 <= fault_addr && fault_addr < PHYS_BASE);
+	  if(!on_stack_frame || !is_stack_addr){
+		  exit(-1);
+	  }
+	  else{
+		 uint8_t *vaddr = pg_round_down(fault_addr);
+		 uint8_t *page = frame_allocate(vaddr,PAL_ZERO);
+		 struct thread *t = thread_current();
+		 memset(page,0,PGSIZE);
+		 if(!call_install_page(vaddr,page,true)){ //writable need to edited
+			frame_free(page);
+			printf("install page error\n");
+			exit(-1);
+		 }
+		 return;
+	  }
+	}
+  uint8_t *vaddr = pg_round_down(fault_addr);
+  uint8_t *kpage = frame_allocate(vaddr,PAL_USER);
+  if(kpage == NULL){
+	printf("can't use swap partition\n");
+	exit(-1);
+  }
+  struct spt_e* found = hash_entry(e,struct spt_e,elem);
+  found->kpage = kpage;
+  //swap in needed to be added.
+  if(found->swap_slot != -1){
+	swap_to_addr(found->swap_slot,kpage);
+	found->swap_slot = -1;
+	if(!call_install_page(found->vaddr,kpage,found->writable)){
+		frame_free(kpage);
+		printf("install page error\n");
+		exit(-1);
+	}
+	return;
+  }	  
+
+  file_seek(found->file,found->ofs);
+  if(file_read(found->file,kpage,found->page_read_bytes) != (int) found->page_read_bytes){
+	  frame_free(kpage);
+	  printf("file read error \n");
 	  exit(-1);
+  }
+  memset(kpage + found->page_read_bytes,0,found->page_zero_bytes);
 
+  if(!call_install_page(found->vaddr,kpage,found->writable)){
+	  frame_free(kpage);	
+	  printf("install page error\n");
+	  exit(-1);
+  }
+  return;
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
@@ -168,6 +227,7 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
   kill (f);
 }
 

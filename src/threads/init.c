@@ -98,7 +98,9 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
+#ifdef VM
   init_frame_list();
+#endif
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -126,7 +128,9 @@ main (void)
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
+#ifdef VM
   init_swap_bitmap();
+#endif
 
   printf ("Boot complete.\n");
 

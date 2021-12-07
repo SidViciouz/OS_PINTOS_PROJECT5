@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "devices/timer.h"
+#include "vm/frame.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -29,6 +30,7 @@ static struct list ready_list;
 static struct list blocked_list;
 
 static int load_avg;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -103,6 +105,7 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&blocked_list);
+  //init_frame_list();
   load_avg = 0;
 
   /* Set up a thread structure for the running thread. */
@@ -153,8 +156,9 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-  /* project 3 */
   block_check();
+#ifndef USERPROG
+  /* project 3 */
 
   if(thread_prior_aging == true || thread_mlfqs == true){
 	  thread_aging();
@@ -167,6 +171,7 @@ thread_tick (void)
 	  if(timer_ticks()%4 == 0)
 		  calculate_priority();
   }
+#endif
 }
 
 /* Prints thread statistics. */
@@ -231,6 +236,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /*proj3*/
   if(thread_current()->priority < priority)
   	thread_yield();
 
@@ -270,7 +276,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  /*proj3*/
   list_insert_ordered(&ready_list,&t->elem,list_compare_priority,NULL);
+  //list_push_back(&ready_list,&t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -341,9 +349,12 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
+	  //proj3
   	list_insert_ordered(&ready_list,&cur->elem,list_compare_priority,NULL);
+	//list_push_back(&ready_list,&cur->elem);
   cur->status = THREAD_READY;
   schedule ();
+
   intr_set_level (old_level);
 }
 
@@ -371,6 +382,7 @@ thread_set_priority (int new_priority)
   if(thread_current()->priority > new_priority)
   {
   	thread_current ()->priority = new_priority;
+	/*proj3*/
 	thread_yield();
   }
   else
@@ -403,7 +415,7 @@ thread_set_nice (int nice)
 
   thread_current()->priority = new_priority;
 
-  
+ /*proj3*/ 
   if(old_priority > new_priority)
 	thread_yield();
 }
@@ -533,9 +545,10 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->file_list));
   t->file_bitmap = NULL;
 
-/* add in proj3 */
+/*add in proj3 */
   t->nice = running_thread()->nice;
   t->recent_cpu = running_thread()->recent_cpu;
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -814,4 +827,10 @@ void calculate_priority()
 
   if(old_priority > thread_current()->priority)
 	  intr_yield_on_return();
+}
+void destroy_file_bitmap()
+{
+	if(thread_current()->file_bitmap != NULL){
+		bitmap_destroy(thread_current()->file_bitmap);
+	}
 }
