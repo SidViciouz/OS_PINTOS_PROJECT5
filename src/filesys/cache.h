@@ -4,7 +4,6 @@
 #include "threads/vaddr.h"
 #include "devices/block.h"
 
-#define NUM_CACHE 64
 
 struct buffer_cache_entry{
 	bool valid_bit;
@@ -13,7 +12,6 @@ struct buffer_cache_entry{
 	block_sector_t disk_sector;
 	uint8_t buffer[BLOCK_SECTOR_SIZE];
 };
-
 void buffer_cache_init();
 void buffer_cache_terminate();
 void buffer_cache_read();
