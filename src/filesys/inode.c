@@ -21,6 +21,8 @@ struct indirect_block {
 
 static bool allocate_block(block_sector_t* p_entry);
 static bool inode_reserve(struct inode_disk *disk_inode, off_t length);
+static bool inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors);
+static bool inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors);
 static bool inode_deallocate(struct inode *inode);
 
 static block_sector_t
@@ -370,8 +372,8 @@ inode_dir(const struct inode *inode)
 {
 	return inode->data.is_dir;
 }
+static char zeros[BLOCK_SECTOR_SIZE];
 static bool allocate_block(block_sector_t* p_entry){
-	static char zeros[BLOCK_SECTOR_SIZE];
 
 	if(*p_entry == 0){
 		if(!free_map_allocate(1,p_entry))
@@ -379,36 +381,23 @@ static bool allocate_block(block_sector_t* p_entry){
 		buffer_cache_write(*p_entry,zeros);
 	}
 	return true;
-}	
+}
+
 static bool
-inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors, int level)
+inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors)
 {
-	static char zeros[BLOCK_SECTOR_SIZE];
-
-	if (level == 0) {
-		// base case : allocate a single sector if necessary and put it into the block
-		if (*p_entry == 0) {
-			if (!free_map_allocate(1, p_entry))
-				return false;
-			buffer_cache_write(*p_entry, zeros);
-		}
-		return true;
-	}
-
 	struct indirect_block indirect_block;
 	if (*p_entry == 0) {
-		// not yet allocated: allocate it, and fill with zero
 		free_map_allocate(1, p_entry);
 		buffer_cache_write(*p_entry, zeros);
 	}
 	buffer_cache_read(*p_entry, &indirect_block);
 
-	size_t unit = (level == 1 ? 1 : INDIRECT);
-	size_t l = DIV_ROUND_UP(num_sectors, unit);
+	size_t l = DIV_ROUND_UP(num_sectors, INDIRECT);
 
-	for (size_t i = 0; i < l; ++i) {
-		size_t subsize = num_sectors < unit ? num_sectors : unit;
-		if (!inode_reserve_indirect(&indirect_block.pointers[i], subsize, level - 1))
+	for (size_t i = 0; i < l; i++) {
+		size_t subsize = num_sectors < INDIRECT ? num_sectors : INDIRECT;
+		if (!inode_reserve_indirect(&indirect_block.pointers[i], subsize))
 			return false;
 		num_sectors -= subsize;
 	}
@@ -417,14 +406,27 @@ inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors, int level)
 	return true;
 }
 
-/**
- * Extend inode blocks, so that the file can hold at least
- * `length` bytes.
- */
+static bool
+inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors)
+{
+	struct indirect_block indirect_block;
+	if (*p_entry == 0) {
+		free_map_allocate(1, p_entry);
+		buffer_cache_write(*p_entry, zeros);
+	}
+	buffer_cache_read(*p_entry, &indirect_block);
+
+	for(size_t i=0; i<num_sectors; i++){
+		if(!allocate_block(&indirect_block.pointers[i]))
+				return false;
+	}
+	buffer_cache_write(*p_entry, &indirect_block);
+	return true;
+}
+
 static bool
 inode_reserve(struct inode_disk *disk_inode, off_t length)
 {
-	static char zeros[BLOCK_SECTOR_SIZE];
 	if (length < 0) return false;
 
 	// (remaining) number of sectors, occupied by this file.
@@ -445,14 +447,14 @@ inode_reserve(struct inode_disk *disk_inode, off_t length)
 
 	// (2) a single indirect block
 	l = num_sectors < INDIRECT ? num_sectors : INDIRECT;
-	if (!inode_reserve_indirect(&disk_inode->indirect_block, l, 1))
+	if (!inode_reserve_indirect(&disk_inode->indirect_block, l))
 		return false;
 	num_sectors -= l;
 	if (num_sectors == 0) return true;
 
 	// (3) a single doubly indirect block
 	l = num_sectors < INDIRECT * INDIRECT ? num_sectors : INDIRECT * INDIRECT;
-	if (!inode_reserve_indirect(&disk_inode->doubly_indirect_block, l, 2))
+	if (!inode_reserve_doubly_indirect(&disk_inode->doubly_indirect_block, l))
 		return false;
 	num_sectors -= l;
 	if (num_sectors == 0) return true;
@@ -462,11 +464,8 @@ inode_reserve(struct inode_disk *disk_inode, off_t length)
 }
 
 static void
-inode_deallocate_indirect(block_sector_t entry, size_t num_sectors, int level)
+inode_deallocate_doubly_indirect(block_sector_t entry, size_t num_sectors, int level)
 {
-	// only supports 2-level indirect block scheme as of now
-	ASSERT(level <= 2);
-
 	if (level == 0) {
 		free_map_release(entry, 1);
 		return;
@@ -477,6 +476,34 @@ inode_deallocate_indirect(block_sector_t entry, size_t num_sectors, int level)
 
 	size_t unit = (level == 1 ? 1 : INDIRECT);
 	size_t i, l = DIV_ROUND_UP(num_sectors, unit);
+
+	for (i = 0; i < l; ++i) {
+		size_t subsize = num_sectors < unit ? num_sectors : unit;
+		inode_deallocate_indirect(indirect_block.pointers[i], subsize, level - 1);
+		num_sectors -= subsize;
+	}
+
+	ASSERT(num_sectors == 0);
+	free_map_release(entry, 1);
+}
+
+static void
+inode_deallocate_indirect(block_sector_t entry, size_t num_sectors, int level)
+{
+	if (level == 0) {
+		free_map_release(entry, 1);
+		return;
+	}
+
+	struct indirect_block indirect_block;
+	buffer_cache_read(entry, &indirect_block);
+
+	size_t unit = (level == 1 ? 1 : INDIRECT);
+	size_t i, l = DIV_ROUND_UP(num_sectors, unit);
+
+	for(size_t i = 0; i<l; i++){
+		inode_deallocate(indirec_block.pointers[i]);
+	}
 
 	for (i = 0; i < l; ++i) {
 		size_t subsize = num_sectors < unit ? num_sectors : unit;
