@@ -4,6 +4,32 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 #include "devices/block.h"
+#include <list.h>
+
+/* In-memory inode. */
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+#define DIRECT_BLOCKS_COUNT 123
+struct inode_disk
+{
+	/** Data sectors */
+	block_sector_t direct_blocks[DIRECT_BLOCKS_COUNT];
+	block_sector_t indirect_block;
+	block_sector_t doubly_indirect_block;
+
+	bool is_dir;
+	off_t length;                       /* File size in bytes. */
+	unsigned magic;                     /* Magic number. */
+};
+struct inode
+{
+	struct list_elem elem;              /* Element in inode list. */
+	block_sector_t sector;              /* Sector number of disk location. */
+	int open_cnt;                       /* Number of openers. */
+	bool removed;                       /* True if deleted, false otherwise. */
+	int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+	struct inode_disk data;             /* Inode content. */
+};
 
 struct bitmap;
 
@@ -21,6 +47,5 @@ void inode_allow_write(struct inode *);
 off_t inode_length(const struct inode *);
 
 bool inode_dir(const struct inode *);
-bool inode_rm(const struct inode *);
 
 #endif /* filesys/inode.h */

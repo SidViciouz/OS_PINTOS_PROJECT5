@@ -105,7 +105,7 @@ struct file *
 	// removed file handling
 	if (inode == NULL)
 		return NULL;
-	else if(inode_rm(inode))
+	else if(inode->removed)
 		return NULL;
 
 	return file_open(inode);
