@@ -16,7 +16,7 @@
 
 
 struct indirect_block {
-	block_sector_t blocks[INDIRECT];
+	block_sector_t pointers[INDIRECT];
 };
 
 static bool inode_allocate(struct inode_disk *disk_inode);
@@ -27,39 +27,31 @@ static block_sector_t
 get_sector_number(const struct inode_disk *idisk, off_t n)
 {
 	block_sector_t ret;
+	struct indirect_block *temp_block;
 
-	// (1) direct blocks
-	//index_limit += DIRECT;
 	if (n < DIRECT)
 		return idisk->direct_blocks[n];
 
-	// (2) a single indirect block
 	if (n < DIRECT + INDIRECT) {
-		struct indirect_block *indirect_idisk;
-		indirect_idisk = calloc(1, sizeof(struct indirect_block));
-		buffer_cache_read(idisk->indirect_block, indirect_idisk);
-
-		ret = indirect_idisk->blocks[n - DIRECT];
-		free(indirect_idisk);
+		temp_block = calloc(1, sizeof(struct indirect_block));
+		buffer_cache_read(idisk->indirect_block, temp_block);
+		ret = temp_block->pointers[n - DIRECT];
+		free(temp_block);
 
 		return ret;
 	}
 
-	// (3) a single doubly indirect block
 	if (n < DIRECT + INDIRECT + INDIRECT*INDIRECT) {
-		// first and second level block index, respecitvely
-		off_t index_first = (n - DIRECT - INDIRECT) / INDIRECT;
-		off_t index_second = (n - DIRECT - INDIRECT) % INDIRECT;
+		off_t first_level_block = (n - DIRECT - INDIRECT) / INDIRECT;
+		off_t second_level_block = (n - DIRECT - INDIRECT) % INDIRECT;
 
-		// fetch two indirect block sectors
-		struct indirect_block *indirect_idisk;
-		indirect_idisk = calloc(1, sizeof(struct indirect_block));
+		temp_block = calloc(1, sizeof(struct indirect_block));
 
-		buffer_cache_read(idisk->doubly_indirect_block, indirect_idisk);
-		buffer_cache_read(indirect_idisk->blocks[index_first], indirect_idisk);
-		ret = indirect_idisk->blocks[index_second];
+		buffer_cache_read(idisk->doubly_indirect_block, temp_block);
+		buffer_cache_read(temp_block->pointers[first_level_block], temp_block);
+		ret = temp_block->pointers[second_level_block];
 
-		free(indirect_idisk);
+		free(temp_block);
 		return ret;
 	}
 
@@ -417,7 +409,7 @@ inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors, int level)
 
 	for (i = 0; i < l; ++i) {
 		size_t subsize = num_sectors < unit ? num_sectors : unit;
-		if (!inode_reserve_indirect(&indirect_block.blocks[i], subsize, level - 1))
+		if (!inode_reserve_indirect(&indirect_block.pointers[i], subsize, level - 1))
 			return false;
 		num_sectors -= subsize;
 	}
@@ -490,7 +482,7 @@ inode_deallocate_indirect(block_sector_t entry, size_t num_sectors, int level)
 
 	for (i = 0; i < l; ++i) {
 		size_t subsize = num_sectors < unit ? num_sectors : unit;
-		inode_deallocate_indirect(indirect_block.blocks[i], subsize, level - 1);
+		inode_deallocate_indirect(indirect_block.pointers[i], subsize, level - 1);
 		num_sectors -= subsize;
 	}
 

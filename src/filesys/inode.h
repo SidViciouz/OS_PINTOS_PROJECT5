@@ -12,11 +12,9 @@
 #define DIRECT 123
 struct inode_disk
 {
-	/** Data sectors */
 	block_sector_t direct_blocks[DIRECT];
 	block_sector_t indirect_block;
 	block_sector_t doubly_indirect_block;
-
 	bool is_dir;
 	off_t length;                       /* File size in bytes. */
 	unsigned magic;                     /* Magic number. */
