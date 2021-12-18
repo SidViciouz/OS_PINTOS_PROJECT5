@@ -9,11 +9,11 @@
 /* In-memory inode. */
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-#define DIRECT_BLOCKS_COUNT 123
+#define DIRECT 123
 struct inode_disk
 {
 	/** Data sectors */
-	block_sector_t direct_blocks[DIRECT_BLOCKS_COUNT];
+	block_sector_t direct_blocks[DIRECT];
 	block_sector_t indirect_block;
 	block_sector_t doubly_indirect_block;
 
