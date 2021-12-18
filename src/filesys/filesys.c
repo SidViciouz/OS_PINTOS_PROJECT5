@@ -59,7 +59,7 @@ filesys_create(const char *path, off_t initial_size, bool is_dir)
 	// split path and name
 	char directory[strlen(path)];
 	char file_name[strlen(path)];
-	split_path_filename(path, directory, file_name);
+	extract_directory_filename_from_path(path, directory, file_name);
 	struct dir *dir = dir_open_path(directory);
 
 	bool success = (dir != NULL
@@ -87,7 +87,7 @@ struct file *
 
 	char directory[l + 1];
 	char file_name[l + 1];
-	split_path_filename(name, directory, file_name);
+	extract_directory_filename_from_path(name, directory, file_name);
 	struct dir *dir = dir_open_path(directory);
 	struct inode *inode = NULL;
 
@@ -118,7 +118,7 @@ filesys_remove(const char *name)
 {
 	char directory[strlen(name)];
 	char file_name[strlen(name)];
-	split_path_filename(name, directory, file_name);
+	extract_directory_filename_from_path(name, directory, file_name);
 	struct dir *dir = dir_open_path(directory);
 
 	bool success = (dir != NULL && dir_remove(dir, file_name));
