@@ -19,7 +19,7 @@ struct indirect_block {
 	block_sector_t pointers[INDIRECT];
 };
 
-static bool inode_allocate(struct inode_disk *disk_inode);
+static bool allocate_block(block_sector_t* p_entry);
 static bool inode_reserve(struct inode_disk *disk_inode, off_t length);
 static bool inode_deallocate(struct inode *inode);
 
@@ -107,7 +107,7 @@ inode_create(block_sector_t sector, off_t length, bool is_dir)
 		disk_inode->length = length;
 		disk_inode->magic = INODE_MAGIC;
 		disk_inode->is_dir = is_dir;
-		if (inode_allocate(disk_inode))
+		if (inode_reserve(disk_inode,disk_inode->length))
 		{
 			buffer_cache_write(sector, disk_inode);
 			success = true;
@@ -370,20 +370,20 @@ inode_dir(const struct inode *inode)
 {
 	return inode->data.is_dir;
 }
+static bool allocate_block(block_sector_t* p_entry){
+	static char zeros[BLOCK_SECTOR_SIZE];
 
-static
-bool inode_allocate(struct inode_disk *disk_inode)
-{
-	return inode_reserve(disk_inode, disk_inode->length);
-}
-
+	if(*p_entry == 0){
+		if(!free_map_allocate(1,p_entry))
+			return false;
+		buffer_cache_write(*p_entry,zeros);
+	}
+	return true;
+}	
 static bool
 inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors, int level)
 {
 	static char zeros[BLOCK_SECTOR_SIZE];
-
-	// only supports 2-level indirect block scheme as of now
-	ASSERT(level <= 2);
 
 	if (level == 0) {
 		// base case : allocate a single sector if necessary and put it into the block
@@ -404,16 +404,15 @@ inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors, int level)
 	buffer_cache_read(*p_entry, &indirect_block);
 
 	size_t unit = (level == 1 ? 1 : INDIRECT);
-	size_t i, l = DIV_ROUND_UP(num_sectors, unit);
+	size_t l = DIV_ROUND_UP(num_sectors, unit);
 
-	for (i = 0; i < l; ++i) {
+	for (size_t i = 0; i < l; ++i) {
 		size_t subsize = num_sectors < unit ? num_sectors : unit;
 		if (!inode_reserve_indirect(&indirect_block.pointers[i], subsize, level - 1))
 			return false;
 		num_sectors -= subsize;
 	}
 
-	ASSERT(num_sectors == 0);
 	buffer_cache_write(*p_entry, &indirect_block);
 	return true;
 }
