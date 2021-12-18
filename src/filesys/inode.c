@@ -506,21 +506,22 @@ bool inode_deallocate(struct inode *inode)
 	for (size_t i = 0; i < l; ++i) {
 		free_map_release(inode->data.direct_blocks[i], 1);
 	}
-	num_sectors -= l;
+	if(num_sectors <= DIRECT)
+		return true;
 
 	// (2) a single indirect block
 	l = num_sectors < INDIRECT ? num_sectors : INDIRECT;
-	if (l > 0) {
+	if (num_sectors - DIRECT > 0) {
 		inode_deallocate_indirect(inode->data.indirect_block, l);
-		num_sectors -= l;
 	}
+	if(num_sectors <= DIRECT + INDIRECT)
+		return true;
 
 	// (3) a single doubly indirect block
+	
 	l = num_sectors <  INDIRECT * INDIRECT ? num_sectors : INDIRECT * INDIRECT;
-	if (l > 0) {
+	if (num_sectors - DIRECT - INDIRECT > 0) {
 		inode_deallocate_doubly_indirect(inode->data.doubly_indirect_block, l);
-		num_sectors -= l;
 	}
-
 	return true;
 }
