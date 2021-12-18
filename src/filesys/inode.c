@@ -24,26 +24,26 @@ static bool inode_reserve(struct inode_disk *disk_inode, off_t length);
 static bool inode_deallocate(struct inode *inode);
 
 static block_sector_t
-index_to_sector(const struct inode_disk *idisk, off_t index)
+get_sector_number(const struct inode_disk *idisk, off_t n)
 {
-	off_t index_base = 0, index_limit = 0;   // base, limit for sector index
+	off_t index_base = 0, index_limit = DIRECT;   // base, limit for sector index
 	block_sector_t ret;
 
 	// (1) direct blocks
-	index_limit += DIRECT;
-	if (index < index_limit) {
-		return idisk->direct_blocks[index];
+	//index_limit += DIRECT;
+	if (n < index_limit) {
+		return idisk->direct_blocks[n];
 	}
 	index_base = index_limit;
 
 	// (2) a single indirect block
 	index_limit +=  INDIRECT;
-	if (index < index_limit) {
+	if (n < index_limit) {
 		struct inode_indirect_block_sector *indirect_idisk;
 		indirect_idisk = calloc(1, sizeof(struct inode_indirect_block_sector));
 		buffer_cache_read(idisk->indirect_block, indirect_idisk);
 
-		ret = indirect_idisk->blocks[index - index_base];
+		ret = indirect_idisk->blocks[n - index_base];
 		free(indirect_idisk);
 
 		return ret;
@@ -52,10 +52,10 @@ index_to_sector(const struct inode_disk *idisk, off_t index)
 
 	// (3) a single doubly indirect block
 	index_limit += INDIRECT * INDIRECT;
-	if (index < index_limit) {
+	if (n < index_limit) {
 		// first and second level block index, respecitvely
-		off_t index_first = (index - index_base) / INDIRECT;
-		off_t index_second = (index - index_base) % INDIRECT;
+		off_t index_first = (n - index_base) / INDIRECT;
+		off_t index_second = (n - index_base) % INDIRECT;
 
 		// fetch two indirect block sectors
 		struct inode_indirect_block_sector *indirect_idisk;
@@ -82,9 +82,8 @@ byte_to_sector(const struct inode *inode, off_t pos)
 {
 	ASSERT(inode != NULL);
 	if (0 <= pos && pos < inode->data.length) {
-		// sector index
-		off_t index = pos / BLOCK_SECTOR_SIZE;
-		return index_to_sector(&inode->data, index);
+		off_t n = pos / BLOCK_SECTOR_SIZE;
+		return get_sector_number(&inode->data, n);
 	}
 	else
 		return -1;
@@ -278,11 +277,6 @@ inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset)
 	return bytes_read;
 }
 
-/* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
-   Returns the number of bytes actually written, which may be
-   less than SIZE if end of file is reached or an error occurs.
-   (Normally a write at end of file would extend the inode).
-   */
 off_t
 inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 	off_t offset)
@@ -295,12 +289,13 @@ inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 		return 0;
 
 	// beyond the EOF: extend the file
-	if (byte_to_sector(inode, offset + size - 1) == -1u) {
+	if (byte_to_sector(inode, offset + size - 1) == -1) {
 		// extend and reserve up to [offset + size] bytes
 		bool success;
 		success = inode_reserve(&inode->data, offset + size);
-		if (!success) return 0;  // fail?
-
+		if (success == false){
+			return 0;
+		}
 		// write back the (extended) file size
 		inode->data.length = offset + size;
 		buffer_cache_write(inode->sector, &inode->data);
