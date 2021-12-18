@@ -15,11 +15,13 @@ struct buffer_cache_entry_t {
 
 };
 
+static size_t clock_idx;
 static struct buffer_cache_entry_t cache[CACHE_SIZE];
 static struct lock buffer_cache_lock;
 
 void buffer_cache_init(void)
 {
+	clock_idx = 0;
 	lock_init(&buffer_cache_lock);
 	for (size_t i = 0; i < CACHE_SIZE; ++i)
 		cache[i].valid = false;
@@ -59,24 +61,23 @@ struct buffer_cache_entry_t* buffer_cache_lookup(block_sector_t sector)
 	return NULL;
 }
 
-struct buffer_cache_entry_t* buffer_cache_evict(void)
+struct buffer_cache_entry_t* buffer_cache_select_victim(void)
 {
 
 	// clock algorithm
-	static size_t clock = 0;
 	while (1) {
-		if (!cache[clock].valid)
-			return &(cache[clock]);
+		if (!cache[clock_idx].valid)
+			return &(cache[clock_idx]);
 
-		if (cache[clock].reference)
-			cache[clock].reference = false;
+		if (cache[clock_idx].reference)
+			cache[clock_idx].reference = false;
 		else break;
 
-		clock++;
-		clock %= CACHE_SIZE;
+		clock_idx++;
+		clock_idx %= CACHE_SIZE;
 	}
 
-	struct buffer_cache_entry_t *slot = &cache[clock];
+	struct buffer_cache_entry_t *slot = &cache[clock_idx];
 	if (slot->dirty) {
 		buffer_cache_flush_entry(slot);
 	}
@@ -92,7 +93,7 @@ void buffer_cache_read(block_sector_t sector, void *target)
 
 	struct buffer_cache_entry_t *slot = buffer_cache_lookup(sector);
 	if (slot == NULL) {
-		slot = buffer_cache_evict();
+		slot = buffer_cache_select_victim();
 		slot->valid = true;
 		slot->dirty = false;
 		slot->disk_sector = sector;
@@ -109,7 +110,7 @@ void buffer_cache_write(block_sector_t sector, const void *source)
 
 	struct buffer_cache_entry_t *slot = buffer_cache_lookup(sector);
 	if (slot == NULL) {
-		slot = buffer_cache_evict();
+		slot = buffer_cache_select_victim();
 		slot->valid = true;
 		slot->disk_sector = sector;
 		slot->dirty = false;
