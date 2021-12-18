@@ -425,14 +425,14 @@ inode_length(const struct inode *inode)
 
 /* Returns whether the file is directory or not. */
 bool
-inode_is_directory(const struct inode *inode)
+inode_dir(const struct inode *inode)
 {
 	return inode->data.is_dir;
 }
 
 /* Returns whether the file is removed or not. */
 bool
-inode_is_removed(const struct inode *inode)
+inode_rm(const struct inode *inode)
 {
 	return inode->removed;
 }

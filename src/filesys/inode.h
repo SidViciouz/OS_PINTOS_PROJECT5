@@ -19,7 +19,8 @@ off_t inode_write_at(struct inode *, const void *, off_t size, off_t offset);
 void inode_deny_write(struct inode *);
 void inode_allow_write(struct inode *);
 off_t inode_length(const struct inode *);
-bool inode_is_directory(const struct inode *);
-bool inode_is_removed(const struct inode *);
+
+bool inode_dir(const struct inode *);
+bool inode_rm(const struct inode *);
 
 #endif /* filesys/inode.h */

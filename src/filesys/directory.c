@@ -97,7 +97,7 @@ struct dir * dir_open_path(const char *path)
 	}
 
 	// prevent from opening removed directories
-	if (inode_is_removed(dir_get_inode(curr))) {
+	if (inode_rm(dir_get_inode(curr))) {
 		dir_close(curr);
 		return NULL;
 	}
@@ -342,7 +342,7 @@ dir_remove(struct dir *dir, const char *name)
 		goto done;
 
 	/* Prevent removing non-empty directory. */
-	if (inode_is_directory(inode)) {
+	if (inode_dir(inode)) {
 		// target : the directory to be removed. (dir : the base directory)
 		struct dir *target = dir_open(inode);
 		bool is_empty = dir_is_empty(target);
