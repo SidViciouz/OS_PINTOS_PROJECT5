@@ -1,107 +1,124 @@
-#include "cache.h"
-#include "threads/malloc.h"
+#include <debug.h>
+#include <string.h>
+#include "filesys/cache.h"
+#include "filesys/filesys.h"
 #include "threads/synch.h"
-#include "filesys.h"
 
-#define NUM_CACHE 64
-static struct buffer_cache_entry cache[NUM_CACHE];
-static struct lock cache_lock;
-static int clock_number;
+#define CACHE_SIZE 64
 
-void buffer_cache_init(){
-	for(int i=0; i<NUM_CACHE; i++){
-		cache[i].valid_bit = false;
-	}
-	lock_init(&cache_lock);
-	clock_number = 0;
+struct buffer_cache_entry_t {
+	bool valid;  
+	bool dirty;     
+	bool reference;    //for clock algorithm
+	block_sector_t disk_sector;
+	uint8_t buffer[BLOCK_SECTOR_SIZE];
+
+};
+
+static struct buffer_cache_entry_t cache[CACHE_SIZE];
+static struct lock buffer_cache_lock;
+
+void buffer_cache_init(void)
+{
+	lock_init(&buffer_cache_lock);
+	for (size_t i = 0; i < CACHE_SIZE; ++i)
+		cache[i].valid = false;
 }
-void buffer_cache_terminate(){
-	lock_acquire(&cache_lock);
-	for(int i=0; i<NUM_CACHE; i++){
-		if(cache[i].valid_bit)
-			buffer_cache_flush_entry(&cache[i]);
+
+void buffer_cache_flush_entry(struct buffer_cache_entry_t *entry)
+{
+
+	if (entry->dirty) {
+		block_write(fs_device, entry->disk_sector, entry->buffer);
+		entry->dirty = false;
 	}
-	lock_release(&cache_lock);
 }
-void buffer_cache_read(block_sector_t sector,uint8_t* buffer){
-	lock_acquire(&cache_lock);
 
-	struct buffer_cache_entry *entry = buffer_cache_lookup(sector);
-	if(entry == NULL){
-		entry = buffer_cache_select_victim();
-		block_read(fs_device,sector,entry->buffer);
-		entry->disk_sector = sector;
-		entry->valid_bit = true;
-		entry->dirty_bit = false;
+void buffer_cache_terminate(void)
+{
+	lock_acquire(&buffer_cache_lock);
+
+	for (size_t i = 0; i < CACHE_SIZE; ++i)
+	{
+		if (cache[i].valid == false) continue;
+		buffer_cache_flush_entry(&(cache[i]));
 	}
-	memcpy(buffer,entry->buffer,BLOCK_SECTOR_SIZE);
-	entry->reference_bit = true;
 
-	lock_release(&cache_lock);
+	lock_release(&buffer_cache_lock);
 }
-void buffer_cache_write(block_sector_t sector,uint8_t* buffer){
-	lock_acquire(&cache_lock);
 
-	struct buffer_cache_entry *entry = buffer_cache_lookup(sector);
-	if(entry == NULL){
-		entry = buffer_cache_select_victim();
-		block_read(fs_device,sector,entry->buffer);
-		entry->disk_sector = sector;
-		entry->valid_bit = true;
-		entry->dirty_bit = false;
-	}
-	memcpy(entry->buffer,buffer,BLOCK_SECTOR_SIZE);
-	entry->dirty_bit = true;
-	entry->reference_bit = true;
 
-	lock_release(&cache_lock);
-}
-struct buffer_cache_entry *buffer_cache_lookup(block_sector_t sector_to_find){
-	for(int i=0; i<NUM_CACHE; i++){
-		if(cache[i].valid_bit && cache[i].disk_sector == sector_to_find)
-			return &cache[i];
+struct buffer_cache_entry_t* buffer_cache_lookup(block_sector_t sector)
+{
+	for (size_t i = 0; i < CACHE_SIZE; ++i)
+	{
+		if (cache[i].valid == true){
+			if (cache[i].disk_sector == sector) return &(cache[i]);
+		}
 	}
 	return NULL;
 }
-struct buffer_cache_entry *buffer_cache_select_victim(){
-	struct buffer_cache_entry* temp;
 
-	for(int i=0; i<2*NUM_CACHE; i++){
-		temp = next_clock_number();
-		if(temp->valid_bit == false){
-			if(temp->dirty_bit)
-				buffer_cache_flush_entry(temp);
-			temp->valid_bit = false;
-			return temp;
-		}
-		
-		if(temp->reference_bit == true)
-			temp->reference_bit = false;
-		else{
-			if(temp->dirty_bit)
-				buffer_cache_flush_entry(temp);
-			temp->valid_bit = false;
-			return temp;	
-		}
-	}		
-}
-void buffer_cache_flush_entry(struct buffer_cache_entry * a){
-	if(a->dirty_bit){
-		a->dirty_bit = false;
-		block_write(fs_device,a->disk_sector,a->buffer);
+struct buffer_cache_entry_t* buffer_cache_evict(void)
+{
+
+	// clock algorithm
+	static size_t clock = 0;
+	while (1) {
+		if (!cache[clock].valid)
+			return &(cache[clock]);
+
+		if (cache[clock].reference)
+			cache[clock].reference = false;
+		else break;
+
+		clock++;
+		clock %= CACHE_SIZE;
 	}
-}
-void buffer_cache_flush_all(){
-	for(int i=0; i<NUM_CACHE; i++){
-		buffer_cache_flush_entry(&cache[i]);
+
+	struct buffer_cache_entry_t *slot = &cache[clock];
+	if (slot->dirty) {
+		buffer_cache_flush_entry(slot);
 	}
+
+	slot->valid = false;
+	return slot;
 }
 
-struct buffer_cache_entry* next_clock_number(){
-	if(clock_number >= 63)
-		clock_number = 0;
-	else
-		clock_number++;
 
-	return &cache[clock_number];
+void buffer_cache_read(block_sector_t sector, void *target)
+{
+	lock_acquire(&buffer_cache_lock);
+
+	struct buffer_cache_entry_t *slot = buffer_cache_lookup(sector);
+	if (slot == NULL) {
+		slot = buffer_cache_evict();
+		slot->valid = true;
+		slot->dirty = false;
+		slot->disk_sector = sector;
+		block_read(fs_device, sector, slot->buffer);
+	}
+	memcpy(target, slot->buffer, BLOCK_SECTOR_SIZE);
+	slot->reference = true;
+	lock_release(&buffer_cache_lock);
+}
+
+void buffer_cache_write(block_sector_t sector, const void *source)
+{
+	lock_acquire(&buffer_cache_lock);
+
+	struct buffer_cache_entry_t *slot = buffer_cache_lookup(sector);
+	if (slot == NULL) {
+		slot = buffer_cache_evict();
+		slot->valid = true;
+		slot->disk_sector = sector;
+		slot->dirty = false;
+		block_read(fs_device, sector, slot->buffer);
+	}
+
+	memcpy(slot->buffer, source, BLOCK_SECTOR_SIZE);
+	slot->reference = true;
+	slot->dirty = true;
+
+	lock_release(&buffer_cache_lock);
 }
