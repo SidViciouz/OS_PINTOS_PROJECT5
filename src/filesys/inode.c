@@ -29,10 +29,10 @@ get_sector_number(const struct inode_disk *idisk, off_t n)
 	block_sector_t ret;
 	struct indirect_block *temp_block;
 
-	if (n < DIRECT)
+	if (n < DIRECT){
 		return idisk->direct_blocks[n];
-
-	if (n < DIRECT + INDIRECT) {
+	}
+	else if (n < DIRECT + INDIRECT) {
 		temp_block = calloc(1, sizeof(struct indirect_block));
 		buffer_cache_read(idisk->indirect_block, temp_block);
 		ret = temp_block->pointers[n - DIRECT];
@@ -40,8 +40,7 @@ get_sector_number(const struct inode_disk *idisk, off_t n)
 
 		return ret;
 	}
-
-	if (n < DIRECT + INDIRECT + INDIRECT*INDIRECT) {
+	else if (n < DIRECT + INDIRECT + INDIRECT*INDIRECT) {
 		off_t first_level_block = (n - DIRECT - INDIRECT) / INDIRECT;
 		off_t second_level_block = (n - DIRECT - INDIRECT) % INDIRECT;
 
