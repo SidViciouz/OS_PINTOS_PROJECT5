@@ -279,11 +279,7 @@ inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 	// beyond the EOF: extend the file
 	if (byte_to_sector(inode, offset + size - 1) == -1) {
 		// extend and reserve up to [offset + size] bytes
-		bool success;
-		success = inode_reserve(&inode->data, offset + size);
-		if (success == false){
-			return 0;
-		}
+		if(!inode_reserve(&inode->data, offset + size)) return 0;
 		// write back the (extended) file size
 		inode->data.length = offset + size;
 		buffer_cache_write(inode->sector, &inode->data);

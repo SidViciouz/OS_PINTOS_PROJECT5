@@ -3,8 +3,6 @@
 
 #include "devices/block.h"
 
-
-//void buffer_cache_flush(struct buffer_cache_entry_t *entry);
 void buffer_cache_init(void);
 void buffer_cache_terminate(void);
 struct buffer_cache_entry_t* buffer_cache_select_victim(void);
