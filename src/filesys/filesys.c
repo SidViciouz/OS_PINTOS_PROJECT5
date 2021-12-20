@@ -56,16 +56,15 @@ filesys_create(const char *path, off_t initial_size, bool is_dir)
 {
 	block_sector_t inode_sector = 0;
 
-	// split path and name
-	char directory[strlen(path)];
-	char file_name[strlen(path)];
-	extract_directory_filename_from_path(path, directory, file_name);
-	struct dir *dir = dir_open_path(directory);
+	char d[strlen(path)];
+	char f[strlen(path)];
+	extract_directory_filename_from_path(path, d, f);
+	struct dir *dir = dir_open_path(d);
 
 	bool success = (dir != NULL
 		&& free_map_allocate(1, &inode_sector)
 		&& inode_create(inode_sector, initial_size, is_dir)
-		&& dir_add(dir, file_name, inode_sector, is_dir));
+		&& dir_add(dir, f, inode_sector, is_dir));
 
 	if (!success && inode_sector != 0)
 		free_map_release(inode_sector, 1);
@@ -82,20 +81,22 @@ filesys_create(const char *path, off_t initial_size, bool is_dir)
 struct file *
 	filesys_open(const char *name)
 {
-	int l = strlen(name);
-	if (l == 0) return NULL;
+	if (strlen(name) == 0){
+		return NULL;
+	}
 
-	char directory[l + 1];
-	char file_name[l + 1];
-	extract_directory_filename_from_path(name, directory, file_name);
-	struct dir *dir = dir_open_path(directory);
+	char d[strlen(name) + 1];
+	char f[strlen(name) + 1];
+	extract_directory_filename_from_path(name, d, f);
+	struct dir *dir = dir_open_path(d);
 	struct inode *inode = NULL;
 
 	// removed directory handling
-	if (dir == NULL) return NULL;
-
-	if (strlen(file_name) > 0) {
-		dir_lookup(dir, file_name, &inode);
+	if (dir == NULL){
+		return NULL;
+	}
+	else if (strlen(f) > 0) {
+		dir_lookup(dir, f, &inode);
 		dir_close(dir);
 	}
 	else { // empty filename : just return the directory
@@ -118,30 +119,21 @@ struct file *
 bool
 filesys_remove(const char *name)
 {
-	char directory[strlen(name)];
-	char file_name[strlen(name)];
-	extract_directory_filename_from_path(name, directory, file_name);
-	struct dir *dir = dir_open_path(directory);
+	char d[strlen(name)];
+	char f[strlen(name)];
+	extract_directory_filename_from_path(name, d, f);
+	struct dir *dir = dir_open_path(d);
 
-	bool success = (dir != NULL && dir_remove(dir, file_name));
-	dir_close(dir);
-
-	return success;
-}
-
-/* Change CWD for the current thread. */
-bool
-filesys_chdir(const char *name)
-{
-	struct dir *dir = dir_open_path(name);
-
-	if (dir == NULL) {
+	if(dir == NULL){
+		dir_close(dir);
+		return false;
+	}
+	if(!dir_remove(dir,f)){
+		dir_close(dir);
 		return false;
 	}
 
-	// switch CWD
-	dir_close(thread_current()->cwd);
-	thread_current()->cwd = dir;
+	dir_close(dir);
 	return true;
 }
 
@@ -155,4 +147,17 @@ do_format(void)
 		PANIC("root directory creation failed");
 	free_map_close();
 	printf("done.\n");
+}
+
+bool filesys_chdir(const char *dir_path)
+{
+	struct dir *d = dir_open_path(dir_path);
+
+	if (d == NULL) return false;
+
+	dir_close(thread_current()->current_dir);
+
+	thread_current()->current_dir = d;
+
+	return true;
 }

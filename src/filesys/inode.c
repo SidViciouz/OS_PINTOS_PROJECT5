@@ -19,47 +19,6 @@ struct indirect_block {
 	block_sector_t pointers[INDIRECT];
 };
 
-static bool allocate_block(block_sector_t* p_entry);
-static bool inode_reserve(struct inode_disk *disk_inode, off_t length);
-static bool inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors);
-static bool inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors);
-static void inode_deallocate_doubly_indirect(block_sector_t entry, size_t num_sectors);
-static void inode_deallocate_indirect(block_sector_t entry, size_t num_sectors);
-static bool inode_deallocate(struct inode *inode);
-
-static block_sector_t
-get_sector_number(const struct inode_disk *idisk, off_t n)
-{
-	block_sector_t ret;
-	struct indirect_block *temp_block;
-
-	if (n < DIRECT){
-		return idisk->direct_blocks[n];
-	}
-	else if (n < DIRECT + INDIRECT) {
-		temp_block = calloc(1, sizeof(struct indirect_block));
-		buffer_cache_read(idisk->indirect_block, temp_block);
-		ret = temp_block->pointers[n - DIRECT];
-		free(temp_block);
-
-		return ret;
-	}
-	else if (n < DIRECT + INDIRECT + INDIRECT*INDIRECT) {
-		off_t first_level_block = (n - DIRECT - INDIRECT) / INDIRECT;
-		off_t second_level_block = (n - DIRECT - INDIRECT) % INDIRECT;
-
-		temp_block = calloc(1, sizeof(struct indirect_block));
-
-		buffer_cache_read(idisk->doubly_indirect_block, temp_block);
-		buffer_cache_read(temp_block->pointers[first_level_block], temp_block);
-		ret = temp_block->pointers[second_level_block];
-
-		free(temp_block);
-		return ret;
-	}
-
-	return -1;
-}
 
 /* Returns the block device sector that contains byte offset POS
    within INODE.
@@ -371,7 +330,7 @@ inode_dir(const struct inode *inode)
 	return inode->data.is_dir;
 }
 static char zeros[BLOCK_SECTOR_SIZE];
-static bool allocate_block(block_sector_t* p_entry){
+bool allocate_block(block_sector_t* p_entry){
 
 	if(*p_entry == 0){
 		if(!free_map_allocate(1,p_entry))
@@ -381,7 +340,7 @@ static bool allocate_block(block_sector_t* p_entry){
 	return true;
 }
 
-static bool
+bool
 inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
@@ -404,7 +363,7 @@ inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors)
 	return true;
 }
 
-static bool
+bool
 inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
@@ -422,7 +381,7 @@ inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors)
 	return true;
 }
 
-static bool
+bool
 inode_reserve(struct inode_disk *disk_inode, off_t length)
 {
 	if (length < 0) return false;
@@ -461,7 +420,7 @@ inode_reserve(struct inode_disk *disk_inode, off_t length)
 	return false;
 }
 
-static void
+void
 inode_deallocate_doubly_indirect(block_sector_t entry, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
@@ -477,7 +436,7 @@ inode_deallocate_doubly_indirect(block_sector_t entry, size_t num_sectors)
 
 	free_map_release(entry, 1);
 }
-static void
+void
 inode_deallocate_indirect(block_sector_t entry, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
@@ -489,7 +448,7 @@ inode_deallocate_indirect(block_sector_t entry, size_t num_sectors)
 	free_map_release(entry, 1);
 }
 
-static
+
 bool inode_deallocate(struct inode *inode)
 {
 	off_t file_length = inode->data.length; // bytes
@@ -520,4 +479,36 @@ bool inode_deallocate(struct inode *inode)
 		inode_deallocate_doubly_indirect(inode->data.doubly_indirect_block, l);
 	}
 	return true;
+}
+block_sector_t get_sector_number(const struct inode_disk *idisk, off_t n)
+{
+	block_sector_t ret;
+	struct indirect_block *temp_block;
+
+	if (n < DIRECT){
+		return idisk->direct_blocks[n];
+	}
+	else if (n < DIRECT + INDIRECT) {
+		temp_block = calloc(1, sizeof(struct indirect_block));
+		buffer_cache_read(idisk->indirect_block, temp_block);
+		ret = temp_block->pointers[n - DIRECT];
+		free(temp_block);
+
+		return ret;
+	}
+	else if (n < DIRECT + INDIRECT + INDIRECT*INDIRECT) {
+		off_t first_level_block = (n - DIRECT - INDIRECT) / INDIRECT;
+		off_t second_level_block = (n - DIRECT - INDIRECT) % INDIRECT;
+
+		temp_block = calloc(1, sizeof(struct indirect_block));
+
+		buffer_cache_read(idisk->doubly_indirect_block, temp_block);
+		buffer_cache_read(temp_block->pointers[first_level_block], temp_block);
+		ret = temp_block->pointers[second_level_block];
+
+		free(temp_block);
+		return ret;
+	}
+
+	return -1;
 }
