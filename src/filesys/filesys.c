@@ -59,7 +59,7 @@ filesys_create(const char *path, off_t initial_size, bool is_dir)
 	char d[strlen(path)];
 	char f[strlen(path)];
 	extract_directory_filename_from_path(path, d, f);
-	struct dir *dir = dir_open_path(d);
+	struct dir *dir = dir_open_from_path(d);
 
 	bool success = (dir != NULL
 		&& free_map_allocate(1, &inode_sector)
@@ -88,7 +88,7 @@ struct file *
 	char d[strlen(name) + 1];
 	char f[strlen(name) + 1];
 	extract_directory_filename_from_path(name, d, f);
-	struct dir *dir = dir_open_path(d);
+	struct dir *dir = dir_open_from_path(d);
 	struct inode *inode = NULL;
 
 	// removed directory handling
@@ -122,7 +122,7 @@ filesys_remove(const char *name)
 	char d[strlen(name)];
 	char f[strlen(name)];
 	extract_directory_filename_from_path(name, d, f);
-	struct dir *dir = dir_open_path(d);
+	struct dir *dir = dir_open_from_path(d);
 
 	if(dir == NULL){
 		dir_close(dir);
@@ -151,7 +151,7 @@ do_format(void)
 
 bool filesys_chdir(const char *dir_path)
 {
-	struct dir *d = dir_open_path(dir_path);
+	struct dir *d = dir_open_from_path(dir_path);
 
 	if (d == NULL) return false;
 

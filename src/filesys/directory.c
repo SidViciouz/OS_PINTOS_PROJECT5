@@ -247,7 +247,7 @@ dir_remove(struct dir *dir, const char *name)
 	if (inode->data.is_dir) {
 		// target : the directory to be removed. (dir : the base directory)
 		struct dir *d = dir_open(inode);
-		if(!dir_is_empty(d)){
+		if(!empty(d)){
 			dir_close(d);
 			goto done;
 		}
@@ -301,83 +301,84 @@ void extract_directory_filename_from_path(const char *path, char *directory, cha
 			dir++;
 		}
 	}
-
 	// tokenize
 	char *chunk, *next, *chunk2 = "";
-	for (chunk = strtok_r(str, "/", &next); chunk != NULL;
-		chunk = strtok_r(NULL, "/", &next))
+	for (chunk = strtok_r(str, "/", &next); chunk != NULL; chunk = strtok_r(NULL, "/", &next))
 	{
 		// append last_token into directory
-		int tl = strlen(chunk2);
-		if (dir && tl > 0) {
-			memcpy(dir, chunk2, sizeof(char) * tl);
-			dir[tl] = '/';
-			dir += tl + 1;
+		if (dir != 0 && strlen(chunk2) != 0) {
+			memcpy(dir, chunk2, sizeof(char) * strlen(chunk2));
+			dir[strlen(chunk2)] = '/';
+			dir += strlen(chunk2);
+			dir++;
 		}
 
 		chunk2 = chunk;
 	}
-
-	if (dir) *dir = '\0';
+	if (dir != 0){
+		*dir = '\0';
+	}
 	memcpy(filename, chunk2, sizeof(char) * (strlen(chunk2) + 1));
 	free(str);
-
 }
 
-struct dir * dir_open_path(const char *path)
+struct dir * dir_open_from_path(const char *path)
 {
 	// copy of path, to tokenize
 	char str[strlen(path) + 1];
 	strlcpy(str, path, strlen(path) + 1);
 
 	// relative path handling
-	struct dir *curr;
-	if (path[0] == '/') { // absolute path
-		curr = dir_open_root();
-	}
-	else { // relative path
-		if (thread_current()->current_dir == NULL) // may happen for non-process threads (e.g. main)
-			curr = dir_open_root();
-		else
-			curr = dir_reopen(thread_current()->current_dir);
-	}
-
+	struct dir *cd;
+	if (path[0] == '/') // absolute path
+		cd = dir_open_root();
+	 // relative path
+	else if (thread_current()->current_dir != NULL) // may happen for non-process threads (e.g. main)
+		cd = dir_reopen(thread_current()->current_dir);
+	else
+		cd = dir_open_root();
+	
 	// tokenize, and traverse the tree
 	char *chunk, *next_chunk;
-	for (chunk = strtok_r(str, "/", &next_chunk); chunk != NULL;
-		chunk = strtok_r(NULL, "/", &next_chunk))
+	struct inode *inode = NULL;
+	struct dir *next = NULL;
+
+	for (chunk = strtok_r(str, "/", &next_chunk); chunk != NULL; chunk = strtok_r(NULL, "/", &next_chunk))
 	{
-		struct inode *inode = NULL;
-		if (dir_lookup(curr, chunk, &inode) == false) {
-			dir_close(curr);
+		inode = NULL;
+
+		if (dir_lookup(cd, chunk, &inode) == false) {
+			dir_close(cd);
 			return NULL; // such directory not exist
 		}
-
-		struct dir *next = dir_open(inode);
-		if (next == NULL) {
-			dir_close(curr);
+		else if((next = dir_open(inode)) == NULL){
+			dir_close(cd);
 			return NULL;
 		}
-		dir_close(curr);
-		curr = next;
+		else{
+			dir_close(cd);
+			cd = next;
+		}
 	}
 
 	// prevent from opening removed directories
-	if (dir_get_inode(curr)->removed) {
-		dir_close(curr);
+	if (dir_get_inode(cd)->removed == true) {
+		dir_close(cd);
 		return NULL;
 	}
 
-	return curr;
+	return cd;
 }
 
-bool dir_is_empty(const struct dir *dir)
+bool empty(const struct dir *dir)
 {
 	struct dir_entry e;
 	off_t ofs;
 
-	for (ofs = sizeof e; inode_read_at(dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e)
-		if (e.in_use)
+	for (ofs = sizeof e; inode_read_at(dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e){
+		if (e.in_use == true){
 			return false;
+		}
+	}
 	return true;
 }

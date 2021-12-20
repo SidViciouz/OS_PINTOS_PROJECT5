@@ -48,10 +48,10 @@ bool inode_dir(const struct inode *);
 
 block_sector_t get_sector_number(const struct inode_disk *idisk, off_t n);
 bool allocate_block(block_sector_t* p_entry);
-bool inode_reserve(struct inode_disk *disk_inode, off_t length);
-bool inode_reserve_doubly_indirect(block_sector_t* p_entry, size_t num_sectors);
-bool inode_reserve_indirect(block_sector_t* p_entry, size_t num_sectors);
-void inode_deallocate_doubly_indirect(block_sector_t entry, size_t num_sectors);
-void inode_deallocate_indirect(block_sector_t entry, size_t num_sectors);
-bool inode_deallocate(struct inode *inode);
+bool alloc_inode(struct inode_disk *disk_inode, off_t length);
+bool alloc_inode_doubly_indirect(block_sector_t* p_entry, size_t num_sectors);
+bool alloc_inode_indirect(block_sector_t* p_entry, size_t num_sectors);
+void dealloc_inode_doubly_indirect(block_sector_t entry, size_t num_sectors);
+void dealloc_inode_indirect(block_sector_t entry, size_t num_sectors);
+bool dealloc_inode(struct inode *inode);
 #endif /* filesys/inode.h */
