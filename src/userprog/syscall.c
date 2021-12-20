@@ -6,13 +6,23 @@
 #include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
-static struct lock syslock;
+static struct lock filesys_lock;
+
+#ifdef FILESYS
+bool chdir(const char *filename);
+bool mkdir(const char *filename);
+bool readdir(int fd, char *filename);
+bool isdir(int fd);
+int inumber(int fd);
+#endif
+
+struct list_item* get_fd(struct thread*,int fd,bool directory, bool file);
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&syslock);
+  lock_init(&filesys_lock);
 }
 
 static void
@@ -100,6 +110,59 @@ syscall_handler (struct intr_frame *f)
 		  exit(-1); 
 	  close(*(int*)(f->esp+4));
   }
+#ifdef FILESYS
+  else if(syscall_no ==  SYS_CHDIR)
+  {
+	  int return_code;
+
+	  if (!is_user_vaddr(f->esp + 4))
+		  exit(-1);
+
+	  f->eax = chdir(*(int*)(f->esp + 4));
+  }
+
+  else if(syscall_no == SYS_MKDIR)
+  {
+	  int return_code;
+
+	  if (!is_user_vaddr(f->esp + 4))
+		  exit(-1);
+
+	  f->eax = mkdir(*(int*)(f->esp + 4));
+
+  }
+
+  else if(syscall_no == SYS_READDIR)
+  {
+	  int return_code;
+
+	  if (!is_user_vaddr(f->esp + 4)|| !is_user_vaddr(f->esp + 8))
+		  exit(-1);
+	  f->eax = readdir(*(int*)(f->esp + 4), *(int*)(f->esp + 8));
+  }
+
+  else if(syscall_no == SYS_ISDIR)
+  {
+	  int return_code;
+
+	  if (!is_user_vaddr(f->esp + 4))
+		  exit(-1);
+
+	  f->eax = isdir(*(int*)(f->esp + 4));
+  }
+
+  else if(syscall_no ==SYS_INUMBER)
+  {
+	  int return_code;
+
+	  if (!is_user_vaddr(f->esp + 4))
+		  exit(-1);
+
+	  f->eax = inumber(*(int*)(f->esp + 4));
+  }
+
+#endif
+
   //thread_exit ();
 }
 
@@ -114,9 +177,7 @@ void exit(int exit_number){
 
 }
 int exec(const char* filename){
-//	 lock_acquire(&syslock);
 	 int pid =  process_execute(filename);
-//	 lock_release(&syslock);
 	 return pid;
 }
 int wait(int pid){
@@ -164,19 +225,28 @@ int write(int fd,int *buffer,unsigned size){
 		return size;
 	}
 	else{
+		
 		struct list_elem* elem;
 		struct list_item* item;
 		unsigned w_size = 0;
 		for(elem = list_begin(&(thread_current()->file_list));
 			elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
 			if((item = list_entry(elem,struct list_item,elem))->fd == fd){
-				file_write_sema_down(item->f);
-				w_size = file_write(item->f,buffer,size);
-				file_write_sema_up(item->f);
-				return w_size;
+				
+				if(item->dir != NULL){
+					return -1;
+				}
+				else{
+					file_write_sema_down(item->f);
+					w_size = file_write(item->f,buffer,size);
+					file_write_sema_up(item->f);
+					return  w_size;
+					
+				}
 			}
 		}
 		return 0;
+
 	}
 	
 }
@@ -201,65 +271,70 @@ int max_of_four_int(int a,int b,int c,int d){
 	return retval;
 }
 int create(const char* file, unsigned initial_size){
-//	lock_acquire(&syslock);
 	int ret; 
 	if(file == NULL){
-//	 	lock_release(&syslock);
 		exit(-1);
 	}
-	ret = filesys_create(file,initial_size);
-//	lock_release(&syslock);
+	//lock_acquire(&filesys_lock);
+	ret = filesys_create(file,initial_size,false);
+	//lock_release(&filesys_lock);
 	return ret;
 }
 int remove(const char* file){
-//	lock_acquire(&syslock);
+	//lock_acquire(&filesys_lock);
 	int ret = filesys_remove(file);
-//	lock_release(&syslock);
+	//lock_release(&filesys_lock);
 
 	return ret;
 }
 int open(const char* file){
-//	lock_acquire(&syslock);
 
 	if(file == NULL){
-//	 	lock_release(&syslock);
 		return -1;
 	}
+	//lock_acquire(&filesys_lock);
 	struct file* f = filesys_open(file);
 	int fd = -1;
 	if(f == NULL){
-//	 	lock_release(&syslock);
+	 	//lock_release(&filesys_lock);
 		return -1;
 	}
-	
+
 	if(thread_current()->file_bitmap == NULL){
-		thread_current()->file_bitmap = bitmap_create(64);
+		thread_current()->file_bitmap = bitmap_create(512);
 		bitmap_set(thread_current()->file_bitmap,0,true);
 		bitmap_set(thread_current()->file_bitmap,1,true);
 	}
 	
-	for(int i=2; i<=63; i++){
+	for(int i=2; i<=511; i++){
 		if(bitmap_count(thread_current()->file_bitmap,i,1,false) == 1){
 			fd = i;
 			bitmap_set(thread_current()->file_bitmap,i,true);
 			break;
 		}
 	}
+
+
 	struct list_item* item = (struct list_item*)malloc(sizeof(struct list_item));
 	item->fd = fd;
 	item->f = f;
+	
+	struct inode *inode = file_get_inode(item->f);
+	if(inode != NULL && inode_dir(inode)){
+		item->dir = dir_open(inode_reopen(inode));
+	}
+	else item->dir = NULL;
+
 	list_push_back(&(thread_current()->file_list),&(item->elem));
 	
 	if(thread_findname_foreach(file))
 		file_deny_write(item->f);
 
-//	lock_release(&syslock);
+	//lock_release(&filesys_lock);
 	return fd;
 }
 int filesize(int fd){
-//	lock_acquire(&syslock);
 	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
-	 	lock_release(&syslock);
 		return 0;
 	}
 	struct list_elem* elem;
@@ -267,17 +342,13 @@ int filesize(int fd){
 	for(elem = list_begin(&(thread_current()->file_list));
 		elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
 		if((item = list_entry(elem,struct list_item,elem))->fd == fd){
-//	 		lock_release(&syslock);
 			return file_length(item->f);
 		}
 	}
-//	lock_release(&syslock);
 	return 0;
 }
 void seek(int fd, unsigned position){
-//	lock_acquire(&syslock);
 	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
-//	 	lock_release(&syslock);
 		return ;
 	}
 	struct list_elem* elem;
@@ -290,13 +361,10 @@ void seek(int fd, unsigned position){
 		}
 	}
 
-//	lock_release(&syslock);
 	return;
 }
 unsigned tell(int fd){
-//	lock_acquire(&syslock);
 	if(bitmap_count(thread_current()->file_bitmap,fd,1,false) == 1){
-//	 	lock_release(&syslock);
 		return 0;
 	}
 	struct list_elem* elem;
@@ -304,17 +372,16 @@ unsigned tell(int fd){
 	for(elem = list_begin(&(thread_current()->file_list));
 		elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
 		if((item = list_entry(elem,struct list_item,elem))->fd == fd){
-//	 		lock_release(&syslock);
 			return file_tell(item->f);
 		}
 	}
-//	lock_release(&syslock);
 	return 0;
 }
 void close(int fd){
-//	lock_acquire(&syslock);
+	//lock_acquire(&filesys_lock);
+
 	if(thread_current()->file_bitmap == NULL){
-		thread_current()->file_bitmap = bitmap_create(64);
+		thread_current()->file_bitmap = bitmap_create(512);
 		bitmap_set(thread_current()->file_bitmap,0,true);
 		bitmap_set(thread_current()->file_bitmap,1,true);
 	}
@@ -323,18 +390,148 @@ void close(int fd){
 	if(fd == 0 || fd == 1){
 		bitmap_set(thread_current()->file_bitmap,fd,false);
 	}
-	//
+
 	struct list_elem* elem;
 	struct list_item* item;
 	for(elem = list_begin(&(thread_current()->file_list));
 		elem != list_end(&(thread_current()->file_list)); elem = list_next(elem)){
 		if((item = list_entry(elem,struct list_item,elem))->fd == fd){
 			file_close(item->f);
+			if(item->dir)
+				dir_close(item->dir);
 			bitmap_set(thread_current()->file_bitmap,item->fd,false);
 			list_remove(elem);
 			break;
 		}
 	}
-//	lock_release(&syslock);
+	//lock_release(&filesys_lock);
 	return;
+}
+
+#ifdef FILESYS
+
+bool chdir(const char *fname)
+{
+	bool ret;
+
+	lock_acquire(&filesys_lock);
+
+	ret = filesys_chdir(fname);
+
+	lock_release(&filesys_lock);
+
+	return ret;
+}
+
+bool mkdir(const char *fname)
+{
+	bool ret;
+
+	lock_acquire(&filesys_lock);
+
+	ret = filesys_create(fname, 0, true);
+
+	lock_release(&filesys_lock);
+
+	return ret;
+}
+
+bool readdir(int fd, char *fname)
+{
+	struct list_item* item;
+	bool ret = false;
+
+	lock_acquire(&filesys_lock);
+
+	item = get_fd(thread_current(), fd, true,false);
+
+	if (item == NULL){
+		lock_release(&filesys_lock);
+		return false;
+	}
+
+	struct inode *inode;
+	inode = file_get_inode(item->f);
+
+	if (inode == NULL){
+		lock_release(&filesys_lock);
+		return false;
+	}
+
+	if (!inode_dir(inode)){
+		lock_release(&filesys_lock);
+		return false;
+	}
+
+	ret = dir_readdir(item->dir, fname);
+
+	lock_release(&filesys_lock);
+	return ret;
+}
+
+bool isdir(int fd)
+{
+	lock_acquire(&filesys_lock);
+
+	struct list_item* file_d = get_fd(thread_current(), fd, true,true);
+	bool ret = inode_dir(file_get_inode(file_d->f));
+
+	lock_release(&filesys_lock);
+	return ret;
+}
+
+int inumber(int fd)
+{
+	lock_acquire(&filesys_lock);
+
+	struct list_item* item = NULL;
+	struct thread* t = thread_current();
+
+	struct list_elem *e;
+	if(!list_empty(&t->file_list)){
+		for(e = list_begin(&t->file_list); e != list_end(&t->file_list); e = list_next(e))
+		{
+			struct list_item *temp_item = list_entry(e,struct list_item,elem);
+			if(temp_item->fd == fd){
+				if(item->dir != NULL ){
+					item = temp_item;
+					break;
+				}
+				else if(item->dir == NULL){
+					item =  temp_item;
+					break;
+				}
+			}
+		}
+	}
+	int ret = (int)inode_get_inumber(file_get_inode(item->f));
+	lock_release(&filesys_lock);
+	return ret;
+}
+#endif
+
+struct list_item* get_fd(struct thread *t,int fd,bool directory,bool file)
+{
+	if(fd <= 2)
+		return NULL;
+
+	struct list_elem *e;
+	if(list_empty(&t->file_list))
+		return NULL;
+
+	for(e = list_begin(&t->file_list); e != list_end(&t->file_list); e = list_next(e))
+	{
+		struct list_item *item = list_entry(e,struct list_item,elem);
+		if(item->fd == fd){
+			if(item->dir != NULL && directory == true )
+			{
+				return item;
+			}
+			else if(item->dir == NULL && file == true )
+			{
+				return item;
+			}
+		}
+	}
+	return NULL;
 }

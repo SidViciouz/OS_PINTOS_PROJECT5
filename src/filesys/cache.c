@@ -10,7 +10,7 @@ struct cache_entry {
 	bool valid;  
 	bool dirty;     
 	bool reference;
-	block_sector_t disk_sector;
+	block_sector_t sector;
 	uint8_t buffer[BLOCK_SECTOR_SIZE];
 
 };
@@ -30,7 +30,7 @@ void buffer_cache_init(void)
 void buffer_cache_flush_entry(struct cache_entry *entry)
 {
 	if (entry->dirty == true) {
-		block_write(fs_device, entry->disk_sector, entry->buffer);
+		block_write(fs_device, entry->sector, entry->buffer);
 		entry->dirty = false;
 	}
 }
@@ -54,7 +54,7 @@ struct cache_entry* buffer_cache_lookup(block_sector_t sector)
 	for (size_t i = 0; i < CACHE_SIZE; ++i)
 	{
 		if (cache[i].valid == true){
-			if (cache[i].disk_sector == sector) return &(cache[i]);
+			if (cache[i].sector == sector) return &(cache[i]);
 		}
 	}
 	return NULL;
@@ -62,6 +62,8 @@ struct cache_entry* buffer_cache_lookup(block_sector_t sector)
 
 struct cache_entry* buffer_cache_select_victim(void)
 {
+	struct cache_entry *e = NULL;
+
 	while (1) {
 		if (!cache[clock_idx].valid)
 			return &cache[clock_idx];
@@ -75,13 +77,11 @@ struct cache_entry* buffer_cache_select_victim(void)
 		clock_idx = ++clock_idx % CACHE_SIZE;
 	}
 
-	struct cache_entry *slot = &cache[clock_idx];
-	if (slot->dirty) {
-		buffer_cache_flush_entry(slot);
-	}
+	e = &cache[clock_idx];
+	buffer_cache_flush_entry(e);
 
-	slot->valid = false;
-	return slot;
+	e->valid = false;
+	return e;
 }
 
 
@@ -94,7 +94,7 @@ void buffer_cache_read(block_sector_t sector, void *buffer)
 		e = buffer_cache_select_victim();
 		e->valid = true;
 		e->dirty = false;
-		e->disk_sector = sector;
+		e->sector = sector;
 		block_read(fs_device, sector, e->buffer);
 	}
 	memcpy(buffer, e->buffer, BLOCK_SECTOR_SIZE);
@@ -111,7 +111,7 @@ void buffer_cache_write(block_sector_t sector, const void *buffer)
 		e = buffer_cache_select_victim();
 		e->valid = true;
 		e->dirty = false;
-		e->disk_sector = sector;
+		e->sector = sector;
 		block_read(fs_device, sector, e->buffer);
 	}
 

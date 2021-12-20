@@ -9,13 +9,10 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
-/* Partition that contains the file system. */
 struct block *fs_device;
 
 static void do_format(void);
 
-/* Initializes the file system module.
-   If FORMAT is true, reformats the file system. */
 void
 filesys_init(bool format)
 {
@@ -34,8 +31,6 @@ filesys_init(bool format)
 	free_map_open();
 }
 
-/* Shuts down the file system module, writing any unwritten data
-   to disk. */
 void
 filesys_done(void)
 {
@@ -44,13 +39,6 @@ filesys_done(void)
 	buffer_cache_terminate();
 }
 
-/* Creates a file or directory (set by `is_dir`) of
-   full path `path` with the given `initial_size`.
-   The path to file consists of two parts: path directory and filename.
-
-   Returns true if successful, false otherwise.
-   Fails if a file named NAME already exists,
-   or if internal memory allocation fails. */
 bool
 filesys_create(const char *path, off_t initial_size, bool is_dir)
 {
@@ -73,11 +61,6 @@ filesys_create(const char *path, off_t initial_size, bool is_dir)
 	return success;
 }
 
-/* Opens the file with the given NAME.
-   Returns the new file if successful or a null pointer
-   otherwise.
-   Fails if no file named NAME exists,
-   or if an internal memory allocation fails. */
 struct file *
 	filesys_open(const char *name)
 {
@@ -91,7 +74,6 @@ struct file *
 	struct dir *dir = dir_open_from_path(d);
 	struct inode *inode = NULL;
 
-	// removed directory handling
 	if (dir == NULL){
 		return NULL;
 	}
@@ -99,11 +81,10 @@ struct file *
 		dir_lookup(dir, f, &inode);
 		dir_close(dir);
 	}
-	else { // empty filename : just return the directory
+	else {
 		inode = dir_get_inode(dir);
 	}
 
-	// removed file handling
 	if (inode == NULL)
 		return NULL;
 	else if(inode->removed)
@@ -112,10 +93,6 @@ struct file *
 	return file_open(inode);
 }
 
-/* Deletes the file named NAME.
-   Returns true if successful, false on failure.
-   Fails if no file named NAME exists,
-   or if an internal memory allocation fails. */
 bool
 filesys_remove(const char *name)
 {

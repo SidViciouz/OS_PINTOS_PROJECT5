@@ -105,6 +105,7 @@ struct list_item
     struct list_elem elem;
     int fd;
     struct file* f;
+    struct dir * dir;
   };
 /* Converts pointer to list element LIST_ELEM into a pointer to
    the structure that LIST_ELEM is embedded inside.  Supply the
