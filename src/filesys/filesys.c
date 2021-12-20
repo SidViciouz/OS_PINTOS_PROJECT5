@@ -151,9 +151,9 @@ do_format(void)
 
 bool filesys_chdir(const char *dir_path)
 {
-	struct dir *d = dir_open_from_path(dir_path);
+	struct dir *d = NULL;
 
-	if (d == NULL) return false;
+	if ((d = dir_open_from_path(dir_path)) == NULL) return false;
 
 	dir_close(thread_current()->current_dir);
 

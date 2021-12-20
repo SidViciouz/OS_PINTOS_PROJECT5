@@ -247,9 +247,16 @@ dir_remove(struct dir *dir, const char *name)
 	if (inode->data.is_dir) {
 		// target : the directory to be removed. (dir : the base directory)
 		struct dir *d = dir_open(inode);
-		if(!empty(d)){
-			dir_close(d);
-			goto done;
+
+		struct dir_entry e;
+		off_t ofs;
+
+		for(ofs = sizeof e; inode_read_at(d->inode, &e, sizeof e, ofs) == sizeof e;
+				ofs += sizeof e){
+			if(e.in_use == true){
+				dir_close(d);
+				goto done;
+			}
 		}
 		dir_close(d);
 	}
@@ -370,15 +377,3 @@ struct dir * dir_open_from_path(const char *path)
 	return cd;
 }
 
-bool empty(const struct dir *dir)
-{
-	struct dir_entry e;
-	off_t ofs;
-
-	for (ofs = sizeof e; inode_read_at(dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e){
-		if (e.in_use == true){
-			return false;
-		}
-	}
-	return true;
-}

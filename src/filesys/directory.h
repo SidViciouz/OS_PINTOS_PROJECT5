@@ -11,7 +11,6 @@ struct inode;
 
 void extract_directory_filename_from_path(const char *path, char *directory, char *filename);
 struct dir *dir_open_from_path(const char *);
-bool empty(const struct dir *);
 
 /* Opening and closing directories. */
 bool dir_create(block_sector_t sector, size_t entry_cnt);
