@@ -334,25 +334,25 @@ inode_dir(const struct inode *inode)
 
 static char empty_page[BLOCK_SECTOR_SIZE];
 
-bool allocate_block(block_sector_t* p_entry){
+bool allocate_block(block_sector_t* block){
 
-	if(*p_entry == 0){
-		if(!free_map_allocate(1,p_entry))
+	if(*block == 0){
+		if(!free_map_allocate(1,block))
 			return false;
-		buffer_cache_write(*p_entry,empty_page);
+		buffer_cache_write(*block,empty_page);
 	}
 	return true;
 }
 
 bool
-alloc_inode_doubly_indirect(block_sector_t* p_entry, size_t num_sectors)
+alloc_inode_doubly_indirect(block_sector_t* block, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
-	if (*p_entry == 0) {
-		free_map_allocate(1, p_entry);
-		buffer_cache_write(*p_entry, empty_page);
+	if (*block == 0) {
+		free_map_allocate(1, block);
+		buffer_cache_write(*block, empty_page);
 	}
-	buffer_cache_read(*p_entry, &indirect_block);
+	buffer_cache_read(*block, &indirect_block);
 
 	size_t l = DIV_ROUND_UP(num_sectors, INDIRECT);
 
@@ -363,25 +363,25 @@ alloc_inode_doubly_indirect(block_sector_t* p_entry, size_t num_sectors)
 		num_sectors -= subsize;
 	}
 
-	buffer_cache_write(*p_entry, &indirect_block);
+	buffer_cache_write(*block, &indirect_block);
 	return true;
 }
 
 bool
-alloc_inode_indirect(block_sector_t* p_entry, size_t num_sectors)
+alloc_inode_indirect(block_sector_t* block, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
-	if (*p_entry == 0) {
-		free_map_allocate(1, p_entry);
-		buffer_cache_write(*p_entry, empty_page);
+	if (*block == 0) {
+		free_map_allocate(1, block);
+		buffer_cache_write(*block, empty_page);
 	}
-	buffer_cache_read(*p_entry, &indirect_block);
+	buffer_cache_read(*block, &indirect_block);
 
 	for(size_t i=0; i<num_sectors; i++){
 		if(!allocate_block(&indirect_block.pointers[i]))
 				return false;
 	}
-	buffer_cache_write(*p_entry, &indirect_block);
+	buffer_cache_write(*block, &indirect_block);
 	return true;
 }
 
@@ -391,46 +391,46 @@ alloc_inode(struct inode_disk *disk_inode, off_t length)
 	if (length < 0) return false;
 
 	// (remaining) number of sectors, occupied by this file.
-	size_t num_sectors = DIV_ROUND_UP(length,BLOCK_SECTOR_SIZE);
-	size_t i, l;
+	size_t size = DIV_ROUND_UP(length,BLOCK_SECTOR_SIZE);
+	size_t temp;
 
 	// (1) direct blocks
-	l = num_sectors < DIRECT ? num_sectors : DIRECT;
-	for (i = 0; i < l; ++i) {
+	temp = size < DIRECT ? size : DIRECT;
+	for (size_t i = 0; i < temp; ++i) {
 		if (disk_inode->direct_blocks[i] == 0) { // unoccupied
 			if (!free_map_allocate(1, &disk_inode->direct_blocks[i]))
 				return false;
 			buffer_cache_write(disk_inode->direct_blocks[i], empty_page);
 		}
 	}
-	num_sectors -= l;
-	if (num_sectors == 0) return true;
+	size -= temp;
+	if (size == 0)
+		return true;
 
 	// (2) a single indirect block
-	l = num_sectors < INDIRECT ? num_sectors : INDIRECT;
-	if (!alloc_inode_indirect(&disk_inode->indirect_block, l))
+	temp = size < INDIRECT ? size : INDIRECT;
+	if (!alloc_inode_indirect(&disk_inode->indirect_block, temp))
 		return false;
-	num_sectors -= l;
-	if (num_sectors == 0) return true;
+	size -= temp;
+	if (size == 0)
+		return true;
 
 	// (3) a single doubly indirect block
-	l = num_sectors < INDIRECT * INDIRECT ? num_sectors : INDIRECT * INDIRECT;
-	if (!alloc_inode_doubly_indirect(&disk_inode->doubly_indirect_block, l))
+	temp = size < INDIRECT * INDIRECT ? size : INDIRECT * INDIRECT;
+	if (!alloc_inode_doubly_indirect(&disk_inode->doubly_indirect_block, temp))
 		return false;
-	num_sectors -= l;
-	if (num_sectors == 0) return true;
+	size -= temp;
+	if (size == 0)
+		return true;
 
-	ASSERT(num_sectors == 0);
 	return false;
 }
 
 void
-dealloc_inode_doubly_indirect(block_sector_t entry, size_t num_sectors)
+dealloc_inode_doubly_indirect(block_sector_t block, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
-	buffer_cache_read(entry, &indirect_block);
-
-	size_t l = DIV_ROUND_UP(num_sectors, INDIRECT);
+	buffer_cache_read(block, &indirect_block);
 
 	for (size_t i = 0; i < DIV_ROUND_UP(num_sectors,INDIRECT); ++i) {
 		size_t subsize = num_sectors < INDIRECT ? num_sectors : INDIRECT;
@@ -438,49 +438,49 @@ dealloc_inode_doubly_indirect(block_sector_t entry, size_t num_sectors)
 		num_sectors -= subsize;
 	}
 
-	free_map_release(entry, 1);
+	free_map_release(block, 1);
 }
 void
-dealloc_inode_indirect(block_sector_t entry, size_t num_sectors)
+dealloc_inode_indirect(block_sector_t block, size_t num_sectors)
 {
 	struct indirect_block indirect_block;
-	buffer_cache_read(entry, &indirect_block);
+	buffer_cache_read(block, &indirect_block);
 
 	for(size_t i = 0; i<num_sectors; i++)
 		free_map_release(indirect_block.pointers[i],1);
 
-	free_map_release(entry, 1);
+	free_map_release(block, 1);
 }
 
 
 bool dealloc_inode(struct inode *inode)
 {
-	off_t file_length = inode->data.length; // bytes
-	if (file_length < 0) return false;
+	if (inode->data.length < 0)
+		return false;
 
-	size_t num_sectors = DIV_ROUND_UP(file_length,BLOCK_SECTOR_SIZE);
+	size_t size = DIV_ROUND_UP(inode->data.length,BLOCK_SECTOR_SIZE);
 
 	// (1) direct blocks
-	size_t l = num_sectors < DIRECT ? num_sectors : DIRECT;
-	for (size_t i = 0; i < l; ++i) {
+	size_t temp = size < DIRECT ? size : DIRECT;
+	for (size_t i = 0; i < temp; ++i) {
 		free_map_release(inode->data.direct_blocks[i], 1);
 	}
-	if(num_sectors <= DIRECT)
+	if(size <= DIRECT)
 		return true;
 
 	// (2) a single indirect block
-	l = num_sectors < INDIRECT ? num_sectors : INDIRECT;
-	if (num_sectors - DIRECT > 0) {
-		dealloc_inode_indirect(inode->data.indirect_block, l);
+	temp = size < INDIRECT ? size : INDIRECT;
+	if (size - DIRECT > 0) {
+		dealloc_inode_indirect(inode->data.indirect_block, temp);
 	}
-	if(num_sectors <= DIRECT + INDIRECT)
+	if(size <= DIRECT + INDIRECT)
 		return true;
 
 	// (3) a single doubly indirect block
 	
-	l = num_sectors <  INDIRECT * INDIRECT ? num_sectors : INDIRECT * INDIRECT;
-	if (num_sectors - DIRECT - INDIRECT > 0) {
-		dealloc_inode_doubly_indirect(inode->data.doubly_indirect_block, l);
+	temp = size <  INDIRECT * INDIRECT ? size : INDIRECT * INDIRECT;
+	if (size - DIRECT - INDIRECT > 0) {
+		dealloc_inode_doubly_indirect(inode->data.doubly_indirect_block, temp);
 	}
 	return true;
 }

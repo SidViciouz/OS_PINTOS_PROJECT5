@@ -171,7 +171,6 @@ dir_add(struct dir *dir, const char *name, block_sector_t inode_sector, bool is_
 {
 	struct dir_entry e;
 	off_t ofs;
-	bool success = false;
 
 	ASSERT(dir != NULL);
 	ASSERT(name != NULL);
@@ -182,20 +181,21 @@ dir_add(struct dir *dir, const char *name, block_sector_t inode_sector, bool is_
 
 	/* Check that NAME is not in use. */
 	if (lookup(dir, name, NULL, NULL))
-		goto done;
+		return false;
 
 	// update the child directory [inode_sector] has a parent directory [dir]
-	if (is_dir)
+	if (is_dir == true)
 	{
 		/* e is a parent-directory-entry here */
-		struct dir *child_dir = dir_open(inode_open(inode_sector));
-		if (child_dir == NULL) goto done;
+		struct dir *new_directory = dir_open(inode_open(inode_sector));
+		if (new_directory == NULL)
+			return false;
 		e.inode_sector = inode_get_inumber(dir_get_inode(dir));
-		if (inode_write_at(child_dir->inode, &e, sizeof e, 0) != sizeof e) {
-			dir_close(child_dir);
-			goto done;
+		if (inode_write_at(new_directory->inode, &e, sizeof e, 0) != sizeof e) {
+			dir_close(new_directory);
+			return false;
 		}
-		dir_close(child_dir);
+		dir_close(new_directory);
 	}
 
 	/* Set OFS to offset of free slot.
@@ -214,10 +214,7 @@ dir_add(struct dir *dir, const char *name, block_sector_t inode_sector, bool is_
 	e.in_use = true;
 	strlcpy(e.name, name, sizeof e.name);
 	e.inode_sector = inode_sector;
-	success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
-
-done:
-	return success;
+	return inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 }
 
 /* Removes any entry for NAME in DIR.
